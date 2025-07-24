@@ -1,0 +1,528 @@
+/*
+SMOOTHED PARTICLE HYDRODYNAMICS:
+
+We can't simulate millions of particles, unfortunately,
+so instead, each particle will have a circle of influence on the DENSITY of the fluid.
+
+More particle influences in the same volume = higher density
+
+We essentially scatter particles around, and approximate the DENSITY of the liquid in between particles
+As we increase the amount of particles, we can get a more acccurate picture of the density of the whole fluid!
+*/
+
+
+
+/*
+We are simulating Newtonian fluids:
+ - Viscosity is not affected by shear rate (ex: if you hit it on the side, then the liquid doesn't flow faster)
+ - Incompressible (wants to go toward constant density while flowing)
+ - Predictable Flow Behavior
+*/
+
+
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+#pragma kernel MoveParticles
+
+#pragma kernel ComputeDensities
+
+
+float4x4 _CameraToWorld;
+float4x4 _CameraInverseProjection;
+
+float4x4 _CameraProjection;
+float4x4 _WorldToCamera;
+
+float2 TextureSize; // in pixels
+float2 CameraSize; // in world units
+float3 CameraCenter; // world-space center of the orthographic camera
+
+const float PI = 3.14159265;
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> Result;
+
+struct Particle
+{
+    float2 position;
+    float2 velocity;
+    float radius;
+    
+    float density;
+};
+
+// Includes
+#include "./FluidHelper.hlsl"
+
+RWStructuredBuffer<Particle> particles;
+
+float deltaTime;
+float gravity;
+float boundsDamping;
+
+float smoothingRadius;
+
+uint particleCount;
+
+float targetDensity;
+float pressureMultiplier;
+float maxVelocity;
+
+float viscosity;
+
+float4 mainColor;
+float4 fastColor;
+
+
+// r             g             b             a
+// bounds.min.x, bounds.min.y, bounds.max.x, bounds.max.y
+float4 bounds;
+
+// screen.x, screen.y
+float2 screenBounds;
+
+
+float2 worldToScreen(float4 pos)
+{
+    float2 screenPos = worldToScreenPos(pos, _CameraProjection, _WorldToCamera, screenBounds);
+    
+    return screenPos;
+}
+
+float2 screenToWorld(float2 pos)
+{
+    float2 uv = pos / TextureSize; // 0 to 1
+    float2 worldPos = (uv - 0.5f) * CameraSize.xy + CameraCenter.xy;
+    
+    return worldPos;
+}
+
+
+float ConvertDensityToPressure(float density)
+{
+    float densityDiff = density - targetDensity;
+    
+    float pressure = densityDiff * pressureMultiplier;
+    
+    //return 1.0f;
+    
+    return pressure;
+}
+
+// Newton's Third Law! Every action has an equal and opposite reaction!
+float ConvertDensitiesToSharedPressure(float density1, float density2)
+{
+    float pressure1 = ConvertDensityToPressure(density1);
+    float pressure2 = ConvertDensityToPressure(density2);
+    
+    return (pressure1 + pressure2) / 2;
+}
+
+// given a position IN THE WORLD
+//float2 CalculateDensityGradient(float2 samplePos)
+//{
+//    float2 densityGrad = float2(0, 0);
+//    const float mass = 1.0f; // TODO: have masses that aren't just all 1
+    
+//    for (uint i = 0; i < particleCount; i++)
+//    {
+//        float distToParticle = distance(samplePos, particles[i].position);
+        
+//        densityGrad += mass * GetParticleInfluenceSlope(distToParticle, smoothingRadius);
+//    }
+    
+//    return densityGrad;
+//}
+
+// given a position IN THE WORLD, loop over all particles and get the influence that particle has on the point
+// TODO: Optimize with like a closest point thing/grid structure
+float CalculateDensity(float2 samplePos)
+{
+    float density = 0.0f;
+    const float mass = 1.0f; // TODO: have masses that aren't just all 1
+    
+    for (uint i = 0; i < particleCount; i++)
+    {
+        float distToParticle = distance(samplePos, particles[i].position);
+        
+        //density += mass * GetParticleInfluence(distToParticle, particles[i].radius);
+
+        density += mass * GetParticleInfluenceSharp(distToParticle, smoothingRadius);
+    }
+    
+    return density;
+}
+    //for (uint i = 0; i < particleCount; i++)
+    //{
+    //    float distToParticle = distance(samplePos, particles[i].position);
+        
+    //    density += mass * GetParticleInfluence(distToParticle, particles[i].radius);
+
+    //}
+    
+float2 CalculatePressureForce(uint particleIndex)
+{
+    float2 samplePos = particles[particleIndex].position;
+    
+    float2 pressureForce = float2(0, 0);
+    
+    const float mass = 1.0f; // TODO: have masses that aren't just all 1
+    
+    for (uint i = 0; i < particleCount; i++)
+    {
+        if (i == particleIndex)
+        {
+            continue;
+        }
+        
+        float distToParticle = distance(samplePos, particles[i].position);
+        float2 dirToParticle = normalize(particles[i].position - samplePos);  // normalized direction to particle
+        
+        if (length(dirToParticle) == 0.0f)
+        {
+            dirToParticle = PseudoRandomDir(particleIndex);
+        }
+         
+        float slope = GetParticleInfluenceSlopeSharp(distToParticle, smoothingRadius);
+        
+        // TODO: Replace this with particles[i].density but right now it doesnt work for i have no idea why
+        //float density = CalculateDensity(particles[i].position);
+        
+        float density = particles[i].density;
+        
+        if (density == 0.0f)
+        {
+            continue;
+        }
+
+        float sharedPressure = ConvertDensitiesToSharedPressure(density, particles[particleIndex].density);
+
+        pressureForce += dirToParticle * sharedPressure * mass / density * slope;
+    }
+        
+    //for (uint i = 0; i < particleCount; i++)
+    //{
+    //    if (i == onIndex)
+    //    {
+    //        continue;
+    //    }
+        
+    //    float distToParticle = distance(samplePos, particles[i].position);
+    //    float2 dirToParticle = normalize(particles[i].position - samplePos); // normalized direction to particle
+        
+    //    if (distToParticle == 0.0f)
+    //    {
+    //        dirToParticle = PseudoRandomDir(onIndex);
+    //    }
+         
+    //    float slope = GetParticleInfluenceSlopeSharp(distToParticle, smoothingRadius);
+        
+    //    // TODO: Replace this with particles[i].density but right now it doesnt work for i have no idea why
+    //    //float density = CalculateDensity(particles[i].position);
+        
+    //    float density = particles[i].density;
+        
+    //    if (density == 0.0f)
+    //    {
+    //        continue;
+    //    }
+
+    //    float sharedPressure = ConvertDensitiesToSharedPressure(density, particles[onIndex].density);
+
+    //    pressureForce += dirToParticle * sharedPressure * mass / density * slope;
+    //}
+    return pressureForce;
+}
+
+
+float4 CalculateColor(float2 samplePos)
+{
+    float4 color = float4(0, 0, 0, 0);
+    
+    for (uint i = 0; i < particleCount; i++)
+    {
+        float distToParticle = distance(samplePos, particles[i].position);
+
+        if (distToParticle < particles[i].radius)
+        {
+            float t = length(particles[i].velocity) / maxVelocity;
+            
+            color = lerp(mainColor, fastColor, t);
+            
+            return color;
+        }
+    }
+    
+    //float t = CalculateDensity(samplePos) / targetDensity;
+    
+    //if (t > 0.6)
+    //{
+    //    color = lerp(float4(1, 1, 1, 1), float4(0, 0, 1, 0), t - 0.6);
+    //}
+    //else
+    //{
+    //    color = lerp(float4(0, 0, 0, 0), float4(1, 1, 1, 1), t);
+    //}
+    
+    return color;
+}
+
+
+// color screen!
+[numthreads(8, 8, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    // paint stuff
+    Result[id.xy] = 0.0;
+    float2 pixelWorldPos = screenToWorld(id.xy);
+    
+    Result[id.xy] = CalculateColor(pixelWorldPos);
+}
+
+
+bool CheckInBounds(Particle p)
+{
+    if ((p.position.y - p.radius) < bounds.y)
+    {
+        return false;
+    }
+    
+    if ((p.position.y + p.radius) > bounds.w)
+    {
+        return false;
+    }
+    
+    if ((p.position.x - p.radius) < bounds.x)
+    {
+        return false;
+    }
+    
+    if ((p.position.x + p.radius) > bounds.z)
+    {
+        return false;
+    }
+    
+    return true;
+}
+
+void HandleCollisions(uint particleIndex)
+{
+    float2 pos = particles[particleIndex].position;
+    float2 vel = particles[particleIndex].velocity;
+
+	// Keep particle inside bounds
+    float2 boundsSize = float2(bounds.b - bounds.r, bounds.a - bounds.g);
+    
+    const float2 halfSize = boundsSize * 0.5;
+    
+    float2 edgeDst = halfSize - abs(pos);
+
+    if (edgeDst.x <= 0)
+    {
+        pos.x = halfSize.x * sign(pos.x);
+        vel.x *= -1 * boundsDamping;
+    }
+    if (edgeDst.y <= 0)
+    {
+        pos.y = halfSize.y * sign(pos.y);
+        vel.y *= -1 * boundsDamping;
+    }
+
+	//// Collide particle against the test obstacle
+ //   float2 obstacleCenter = 
+ //   const float2 obstacleHalfSize = obstacleSize * 0.5;
+ //   float2 obstacleEdgeDst = obstacleHalfSize - abs(pos - obstacleCenter);
+
+ //   if (obstacleEdgeDst.x >= 0 && obstacleEdgeDst.y >= 0)
+ //   {
+ //       if (obstacleEdgeDst.x < obstacleEdgeDst.y)
+ //       {
+ //           pos.x = obstacleHalfSize.x * sign(pos.x - obstacleCentre.x) + obstacleCentre.x;
+ //           vel.x *= -1 * boundsDamping;
+ //       }
+ //       else
+ //       {
+ //           pos.y = obstacleHalfSize.y * sign(pos.y - obstacleCentre.y) + obstacleCentre.y;
+ //           vel.y *= -1 * boundsDamping;
+ //       }
+ //   }
+
+	// Update position and velocity
+    particles[particleIndex].position = pos;
+    particles[particleIndex].velocity = vel;
+}
+
+
+//void HandleCollisions(uint index)
+//{
+//    Particle p = particles[index];
+    
+//    bool collided = false;
+    
+//    if ((p.position.x - p.radius) < bounds.x)
+//    {
+//        particles[index].position.x = bounds.x + p.radius;
+//        particles[index].velocity.x = -particles[index].velocity.x * (1.0f - boundsDamping);
+        
+//        collided = true;
+//    }
+    
+//    if ((p.position.x + p.radius) > bounds.z)
+//    {
+//        particles[index].position.x = bounds.z - p.radius;
+        
+//        particles[index].velocity.x = -particles[index].velocity.x * (1.0f - boundsDamping);
+        
+//        collided = true;
+//    }
+    
+//    if ((p.position.y - p.radius) < bounds.y)
+//    {
+//        particles[index].position.y = bounds.y + p.radius;
+//        particles[index].velocity.y = -particles[index].velocity.y * (1.0f - boundsDamping);
+       
+//        if (collided)
+//        {
+//            particles[index].position.y += 0.02f;
+//        }
+        
+//        collided = true;
+//    }
+    
+//    if ((p.position.y + p.radius) > bounds.w)
+//    {
+//        particles[index].position.y = bounds.w - p.radius;
+//        particles[index].velocity.y = -particles[index].velocity.y * (1.0f - boundsDamping);
+        
+//        if (collided)
+//        {
+//            particles[index].position.y -= 0.02f;
+//        }
+        
+//        collided = true;
+//    }
+//}
+
+
+[numthreads(64, 1, 1)]
+void ComputeDensities(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    
+    if (id.x >= particleCount)
+        return;
+    
+    // pre-calculate the particle's density
+    particles[index].density = CalculateDensity(particles[index].position);
+}
+
+[numthreads(64, 1, 1)]
+void MoveParticles(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    
+    if (id.x >= particleCount)
+        return;
+    
+    
+    // pre-calculate the particle's density
+    particles[index].density = CalculateDensity(particles[index].position);
+    
+    if (particles[index].density == 0.0f)
+    {
+        return;
+    }
+    
+    // apply gravity
+    float2 gravityVector = float2(0, -gravity);
+    
+    particles[index].velocity += gravityVector * deltaTime;
+        
+    // move particles away from each other
+    float2 pressureForce = CalculatePressureForce(index);
+    // F = ma, mass of a particle = density of particle
+    // a = F / m
+    float2 pressureAccel = pressureForce / particles[index].density;
+    
+    
+    particles[index].velocity += pressureAccel * deltaTime;
+    
+    
+    // slowdown
+    if (length(particles[index].velocity) > 0.001f)
+    {
+        particles[index].velocity -= normalize(particles[index].velocity) * deltaTime * viscosity;
+    }
+    
+    if (length(particles[index].velocity) > maxVelocity)
+    {
+        particles[index].velocity = normalize(particles[index].velocity) * maxVelocity;
+    }
+    
+    particles[index].position += particles[index].velocity * deltaTime;
+        
+    // basic bounds collision
+    HandleCollisions(index);
+    
+}
+
+
+[numthreads(64, 1, 1)]
+void UpdateSpatialLookup(uint3 id : SV_DispatchThreadID)
+{
+
+}
+
+
+
+
+
+
+
+//[numthreads(64, 1, 1)]
+//void UpdateSpatialLookup(uint3 id : SV_DispatchThreadID)
+//{
+
+//}
+
+
+//// given a position IN THE WORLD, loop over all particles and get the influence that particle has on the point
+//// TODO: Optimize with like a closest point thing/grid structure
+
+//void ForeachPointWithinRadius(float2 samplePoint)
+//{
+//    // Find which cell the sample point is in (this will be the centre of our 3x3 block)
+//    int2 center = PositionToCellCoord(samplePoint, smoothingRadius);
+
+//    // Loop over all cells of the 3x3 block around the centre cell
+//    for (int i = 0; i < 9; i++)
+//    {
+//        int2 offset = offsets2D[i];
+        
+//        // Get key of current cell, then loop over all points that share that key
+//        uint hash = HashCell(center.x + offset.x, center.y + offset.y);
+//        uint key = KeyFromHash(hash, particleCount);
+//        int cellStartIndex = startIndices[key];
+
+//        for (uint j = cellStartIndex; j < particleCount; j++)
+//        {
+//            // Exit loop if we're no longer looking at the correct cell
+//            if ((uint) spatialLookup[j].cellKey != key)
+//                break;
+
+//            int particleIndex = spatialLookup[j].particleIndex;
+//            float dst = length(particles[particleIndex].position - samplePoint);
+
+//            // Test if the point is inside the radius
+//            if (dst <= smoothingRadius)
+//            {
+//                // Do something with the particleIndex!
+//                // (either by writing code here that uses it directly, or more likely by
+//                // having this function take in a callback, or return an IEnumerable, etc.)
+                
+                
+//            }
+//        }
+//    }
+//}
