@@ -23,6 +23,6 @@ This approach provides more realistic lighting, depth, and shading, making it id
 ### References:
 [https://matthias-research.github.io/pages/publications/sca03.pdf](URL)
 [https://people.cs.rutgers.edu/~venugopa/parallel_summer2012/bitonic_overview.html](url)
-[https://developer.download.nvidia.com/presentations/2010/gdc/Direct3D_Effects.pdf](url)
-[https://cg.informatik.uni-freiburg.de/publications/2012_CGI_sprayFoamBubbles.pdf](url)
+[https://developer.download.nvidia.com/presentations/2010/gdc/Direct3D_Effects.pdf](url)   
+[https://cg.informatik.uni-freiburg.de/publications/2012_CGI_sprayFoamBubbles.pdf](url)    
 [https://www.youtube.com/watch?v=kOkfC5fLfgE](URL)
