@@ -239,6 +239,18 @@ static const int3 offsets3D[27] =
 	int3(1, 1, 1)
 };
 
+struct Particle
+{
+    float3 position;
+    float3 velocity;
+    float radius;
+    
+    float3 predictedPosition;
+    
+    float density;
+    float nearDensity;
+};
+
 struct Entry
 {
     uint particleIndex;
@@ -254,9 +266,9 @@ uint HashCell(int cellX, int cellY, int cellZ)
     
     const int PRIME4 = 31;
     
-    int positiveX = asuint(cellX + PRIME4);
-    int positiveY = asuint(cellY + PRIME4);
-    int positiveZ = asuint(cellZ + PRIME4);
+    int positiveX = (uint) (cellX + PRIME4);
+    int positiveY = (uint) (cellY + PRIME4);
+    int positiveZ = (uint) (cellZ + PRIME4);
 
     
     int hash = positiveX * PRIME1 + positiveY * PRIME2 + positiveZ * PRIME3;
@@ -273,7 +285,6 @@ uint KeyFromHash(uint hash, uint tableSize)
 
 int3 PositionToCellCoord(float3 position, float smoothingRadius, float3 boundsCenter, float3 boundsExtents) 
 {
-    
     float3 offset = float3(boundsCenter.x - boundsExtents.x, boundsCenter.y - boundsExtents.y, boundsCenter.z - boundsExtents.z);
     return (int3) floor((position - offset) / smoothingRadius);
 }

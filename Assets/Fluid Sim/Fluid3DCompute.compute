@@ -51,17 +51,6 @@ const float PI = 3.14159265;
 RWTexture2D<float4> Result;
 Texture2D<float4> _CameraTex;
 
-struct Particle
-{
-    float3 position;
-    float3 velocity;
-    float radius;
-    
-    float3 predictedPosition;
-    
-    float density;
-    float nearDensity;
-};
 
 // Includes
 #include "./FluidHelper3D.hlsl"

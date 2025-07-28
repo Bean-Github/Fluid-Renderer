@@ -1,0 +1,116 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CreateSpatialLookup
+#pragma kernel SortSpatialLookup
+#pragma kernel CalculateStartIndices
+
+#include "../FluidHelper3D.hlsl"
+
+//RWStructuredBuffer<int> Values;
+
+RWStructuredBuffer<Particle> particleData;
+
+RWStructuredBuffer<Entry> spatialLookup;
+
+RWStructuredBuffer<uint> startIndices;
+
+uint particleCount;
+
+float smoothingRadius;
+float3 boundsCenter;
+float3 boundsExtents;
+
+
+static const int GroupSize = 64;
+
+int width;
+int height;
+
+const uint UINT_MAX = 0xFFFFFFFF; // 2^32 - 1 = 4294967295
+const int INT_MAX = 2147483647; //  2^31 - 1
+
+
+[numthreads(GroupSize, 1, 1)]
+void CreateSpatialLookup(uint3 id : SV_DispatchThreadID)
+{
+    int i = id.x;
+    
+    int3 cell = PositionToCellCoord(particleData[i].position, smoothingRadius, boundsCenter, boundsExtents);
+    
+    uint hash = HashCell(cell.x, cell.y, cell.z);
+    
+
+    uint cellKey = KeyFromHash(hash, (uint) (particleCount));
+    
+    Entry newEntry = { (uint) i, hash, cellKey };
+    
+    spatialLookup[i] = newEntry;
+    
+    startIndices[i] = INT_MAX; // Initialize start indices to a large value
+}
+
+
+[numthreads(GroupSize, 1, 1)]
+void SortSpatialLookup(uint3 id : SV_DispatchThreadID)
+{
+    
+    // if index odd then descending, else ascending 
+    
+    // to find index low we want to essentially go one by one until we reach the end of the width, then hop down to the next pair
+    
+    uint indexLow = id.x + (id.x / width) * width;
+    
+    // get index high
+    uint indexHigh = indexLow + width;
+    
+    if (indexHigh >= particleCount)
+    {
+        // if index high is out of bounds, return (for non power of 2 arrays)
+        return;
+    }
+    
+    
+    // determine accending or descending based on the height and index low pos
+    bool accending = ((indexLow / height) % 2 == 0);
+
+    if (accending)
+    {
+    // even hop number, ascending
+        if (spatialLookup[indexLow].cellKey > spatialLookup[indexHigh].cellKey)
+        {
+        // swap
+            Entry temp = spatialLookup[indexLow];
+            spatialLookup[indexLow] = spatialLookup[indexHigh];
+            spatialLookup[indexHigh] = temp;
+        }
+    }
+    else
+    {
+    // odd hop number, descending
+        if (spatialLookup[indexLow].cellKey < spatialLookup[indexHigh].cellKey)
+        {
+        // swap
+            Entry temp = spatialLookup[indexLow];
+            spatialLookup[indexLow] = spatialLookup[indexHigh];
+            spatialLookup[indexHigh] = temp;
+        }
+    }
+}
+
+[numthreads(GroupSize, 1, 1)]
+void CalculateStartIndices(uint3 id : SV_DispatchThreadID)
+{
+    int i = id.x;
+    
+    uint key = spatialLookup[i].cellKey;
+    
+    uint keyPrev = i == 0 ? INT_MAX : spatialLookup[i - 1].cellKey;
+
+    if (key != keyPrev)
+    {
+        startIndices[key] = (uint) i;
+    }
+}
+
+
+
+

@@ -22,7 +22,7 @@ We are simulating Newtonian fluids:
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel CSMain
 #pragma kernel MoveParticles
-
+#pragma kernel RenderDensityMap
 
 float4x4 _CameraToWorld;
 float4x4 _CameraInverseProjection;
@@ -44,17 +44,9 @@ const float PI = 3.14159265;
 RWTexture2D<float4> Result;
 Texture2D<float4> _CameraTex;
 
-struct Particle
-{
-    float3 position;
-    float3 velocity;
-    float radius;
-    
-    float3 predictedPosition;
-    
-    float density;
-    float nearDensity;
-};
+
+RWTexture3D<float4> DensityMap; // used for rendering the density map
+const uint3 densityMapSize;
 
 // Includes
 #include "./FluidHelper3D.hlsl"
@@ -472,3 +464,15 @@ void MoveParticles(uint3 id : SV_DispatchThreadID)
 
 }
 
+
+[numthreads(8, 8, 8)]
+void RenderDensityMap(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= densityMapSize.x || id.y >= densityMapSize.y || id.z >= densityMapSize.z)
+        return;
+
+    // Convert threadID to a world-space position, and sample the fluid density at that point
+    float3 texturePos = (float3) id / (densityMapSize - 1.0);
+    float3 worldPos = (texturePos - 0.5) * boundsExtents * 2.0 + boundsCenter;
+    DensityMap[id] = CalculateDensity(worldPos)[1];
+}

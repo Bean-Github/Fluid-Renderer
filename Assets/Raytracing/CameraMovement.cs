@@ -29,13 +29,13 @@ public class CameraMovement : MonoBehaviour
             m_CurrMoveSpeed = moveSpeed;
         }
 
-        transform.position += transform.right * Input.GetAxis("Horizontal") * m_CurrMoveSpeed * Time.deltaTime;
-        transform.position += transform.forward * Input.GetAxis("Vertical") * m_CurrMoveSpeed * Time.deltaTime;
-        transform.position += transform.up * Input.GetAxis("Custom Vertical") * m_CurrMoveSpeed * Time.deltaTime;
+        transform.position += transform.right * Input.GetAxis("Horizontal") * m_CurrMoveSpeed * Time.smoothDeltaTime;
+        transform.position += transform.forward * Input.GetAxis("Vertical") * m_CurrMoveSpeed * Time.smoothDeltaTime;
+        transform.position += transform.up * Input.GetAxis("Custom Vertical") * m_CurrMoveSpeed * Time.smoothDeltaTime;
 
         // Get mouse input for rotation
-        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * Time.deltaTime;
-        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * Time.deltaTime;
+        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * Time.smoothDeltaTime;
+        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * Time.smoothDeltaTime;
 
         // Adjust yaw and pitch based on mouse input
         yaw += mouseX;
@@ -47,4 +47,5 @@ public class CameraMovement : MonoBehaviour
         transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
 
     }
+
 }

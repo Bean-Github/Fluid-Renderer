@@ -1,0 +1,64 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+RWStructuredBuffer<int> Values;
+
+static const int GroupSize = 64;
+
+int numValues;
+
+int width;
+int height;
+
+[numthreads(GroupSize,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    
+    // if index odd then descending, else ascending 
+    
+    // to find index low we want to essentially go one by one until we reach the end of the width, then hop down to the next pair
+    
+    int indexLow = id.x + (id.x / width) * width;
+    
+    // get index high
+    int indexHigh = indexLow + width;
+    
+    if (indexHigh >= numValues)
+    {
+        // if index high is out of bounds, return (for non power of 2 arrays)
+        return;
+    }
+    
+    
+    // determine accending or descending based on the height and index low pos
+    bool accending = ((indexLow / height) % 2 == 0);
+
+    if (accending)
+    {
+    // even hop number, ascending
+        if (Values[indexLow] > Values[indexHigh])
+        {
+        // swap
+            int temp = Values[indexLow];
+            Values[indexLow] = Values[indexHigh];
+            Values[indexHigh] = temp;
+        }
+    }
+    else
+    {
+    // odd hop number, descending
+        if (Values[indexLow] < Values[indexHigh])
+        {
+        // swap
+            int temp = Values[indexLow];
+            Values[indexLow] = Values[indexHigh];
+            Values[indexHigh] = temp;
+        }
+    }
+    
+
+}
+
+
+
+

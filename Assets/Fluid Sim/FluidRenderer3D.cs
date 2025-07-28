@@ -77,7 +77,7 @@ public class FluidRenderer3D : ComputeShaderRenderer
         base.Awake();
 
         // initialize particles for rendering
-        particleManager?.Initialize(particleCount, maxVelocity);
+        //particleManager?.Initialize(particleCount, maxVelocity);
     }
 
     protected override void CreateBuffers()
@@ -210,7 +210,7 @@ public class FluidRenderer3D : ComputeShaderRenderer
 
     protected override void Update()
     {
-        particleManager?.RenderParticles(particleData);
+        particleManager?.RenderParticles(particleBuffer, particleCount, bounds);
     }
 
 
@@ -367,20 +367,6 @@ public class FluidRenderer3D : ComputeShaderRenderer
     
     #endregion
 }
-
-public struct Particle3D
-{
-    public Vector3 position;
-    public Vector3 velocity;
-    public float radius;
-
-    public Vector3 predictedPosition;
-
-    public float density;
-    public float nearDensity;
-}
-
-
 
 
 

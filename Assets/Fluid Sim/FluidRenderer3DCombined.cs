@@ -2,13 +2,12 @@ using System;
 using System.Threading.Tasks;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 using UnityEngine.UIElements;
 using static UnityEngine.EventSystems.EventTrigger;
 
 public class FluidRenderer3DCombined : ComputeShaderRenderer
 {
-    public GameObject particlePrefab;
-
     // bounds
     public BoxCollider boundsCollider;
     public BoxCollider spawnCollider;
@@ -16,7 +15,7 @@ public class FluidRenderer3DCombined : ComputeShaderRenderer
 
     //public Transform particlesParent;
 
-    public ParticleManager particleManager;
+    public SpatialHash spatialHash;
 
     Bounds bounds;
     Bounds spawnBounds;
@@ -26,8 +25,6 @@ public class FluidRenderer3DCombined : ComputeShaderRenderer
     public float gravity = 1.0f;
 
     public float mass = 1.0f;
-
-    public float particleRadius = 0.1f;
 
     // pressure
     [Range(0.0f, 1.0f)]
@@ -50,34 +47,32 @@ public class FluidRenderer3DCombined : ComputeShaderRenderer
     public float mouseForce;
     public float mouseRadius;
 
-    // colors
-    //public Color mainParticleColor;
-    //public Color mediumColor;
-    //public Color fastishColor;
-    //public Color fastColor;
-
     // buffers
     ComputeBuffer particleBuffer;
     ComputeBuffer spatialBuffer;
     ComputeBuffer startIndicesBuffer;
 
+    // densityMultiplier map
+    [Header("Density Map Settings")]
+    public bool useDensityMap = false;
+    public RenderTexture densityMap;
+    public int densityTextureRes;
+
+    [Header("Particle Render Settings")]
+    public bool renderParticles = true;
+    public float particleRadius = 0.1f;
+    public ParticleManager particleManager;
 
     // kernels
-    int colorParticleKernel;  // obsolete
     int moveParticleKernel;
-    int computeDensityKernel;
-    int externalForceKernel;
-
-    int pressureKernel;
-    int viscosityKernel;
-
+    int densityMapKernel;
 
     protected override void Awake()
     {
         base.Awake();
 
         // initialize particles for rendering
-        particleManager?.Initialize(particleCount, maxVelocity);
+        //particleManager?.Initialize(particleCount, maxVelocity);
     }
 
     protected override void CreateBuffers()
@@ -121,19 +116,11 @@ public class FluidRenderer3DCombined : ComputeShaderRenderer
 
         //colorParticleKernel = computeShader.FindKernel("CSMain");
         moveParticleKernel = computeShader.FindKernel("MoveParticles");
-        computeDensityKernel = computeShader.FindKernel("ComputeDensities");
-        externalForceKernel = computeShader.FindKernel("ApplyExternalForce");
-
-        pressureKernel = computeShader.FindKernel("ApplyPressure");
-        viscosityKernel = computeShader.FindKernel("ApplyViscosity");
+        densityMapKernel = computeShader.FindKernel("RenderDensityMap");
 
         // set buffers
-        //computeShader.SetBuffer(colorParticleKernel, "particles", particleBuffer);
         computeShader.SetBuffer(moveParticleKernel, "particles", particleBuffer);
-        //computeShader.SetBuffer(computeDensityKernel, "particles", particleBuffer);
-        //computeShader.SetBuffer(externalForceKernel, "particles", particleBuffer);
-        //computeShader.SetBuffer(pressureKernel, "particles", particleBuffer);
-        //computeShader.SetBuffer(viscosityKernel, "particles", particleBuffer);
+        computeShader.SetBuffer(densityMapKernel, "particles", particleBuffer);
     }
 
     protected override void SetShaderParameters()
@@ -148,6 +135,34 @@ public class FluidRenderer3DCombined : ComputeShaderRenderer
             Camera.main.orthographicSize * 2 * Camera.main.aspect,
             Camera.main.orthographicSize * 2
         );
+
+    }
+
+    protected override void SetRealtimeShaderParameters()
+    {
+        base.SetRealtimeShaderParameters();
+
+        bounds = boundsCollider.bounds;
+
+        computeShader.SetVector("boundsCenter", bounds.center);
+        computeShader.SetVector("boundsExtents", bounds.extents);
+
+        computeShader.SetFloat("deltaTime", Time.deltaTime);
+
+        computeShader.SetMatrix("localToWorld", boundsCollider.transform.localToWorldMatrix);
+        computeShader.SetMatrix("worldToLocal", boundsCollider.transform.worldToLocalMatrix);
+
+        bool clicking = Input.GetMouseButton(0);
+        bool rightClicking = Input.GetMouseButton(1);
+
+        computeShader.SetFloat("mouseForce", clicking ? mouseForce : -mouseForce);
+        computeShader.SetFloat("mouseRadius", mouseRadius);
+
+
+        computeShader.SetBool("isClicking", clicking || rightClicking);
+
+        spatialHash?.SetValues(smoothingRadius, boundsCollider.bounds);
+
 
         // set values for compute shader
         computeShader.SetFloat("gravity", gravity);
@@ -168,38 +183,14 @@ public class FluidRenderer3DCombined : ComputeShaderRenderer
 
         computeShader.SetFloat("maxVelocity", maxVelocity);
 
-        computeShader.SetFloat("deltaTime", Time.fixedDeltaTime);
-
 
         computeShader.SetFloat("cornerPushback", cornerPushback);
-    }
-
-    protected override void SetRealtimeShaderParameters()
-    {
-        base.SetRealtimeShaderParameters();
-
-        bounds = boundsCollider.bounds;
-
-        computeShader.SetVector("boundsCenter", bounds.center);
-        computeShader.SetVector("boundsExtents", bounds.extents);
-
-        computeShader.SetMatrix("localToWorld", boundsCollider.transform.localToWorldMatrix);
-        computeShader.SetMatrix("worldToLocal", boundsCollider.transform.worldToLocalMatrix);
-
-        bool clicking = Input.GetMouseButton(0);
-        bool rightClicking = Input.GetMouseButton(1);
-
-        computeShader.SetFloat("mouseForce", clicking ? mouseForce : -mouseForce);
-        computeShader.SetFloat("mouseRadius", mouseRadius);
-        
-
-        computeShader.SetBool("isClicking", clicking || rightClicking);
     }
 
 
     protected override void Update()
     {
-        particleManager?.RenderParticles(particleData);
+        if (renderParticles) particleManager?.RenderParticles(particleBuffer, particleCount, bounds);
     }
 
 
@@ -208,7 +199,14 @@ public class FluidRenderer3DCombined : ComputeShaderRenderer
         UpdateSpatialLookup();
 
         Dispatch();
-        Render();
+        Render(); // obsolete, but kept for compatibility
+
+        // update densityMultiplier map
+
+        if (useDensityMap)
+        {
+            UpdateDensityMap();
+        }
     }
 
     protected override void Dispatch()
@@ -217,13 +215,8 @@ public class FluidRenderer3DCombined : ComputeShaderRenderer
 
         int numThreads = Mathf.CeilToInt(particleCount / 64.0f);
 
-        //computeShader.Dispatch(computeDensityKernel, numThreads, 1, 1);
-        //computeShader.Dispatch(externalForceKernel, numThreads, 1, 1);
-
-        //computeShader.Dispatch(pressureKernel, numThreads, 1, 1);
-        //computeShader.Dispatch(viscosityKernel, numThreads, 1, 1);
-
         computeShader.Dispatch(moveParticleKernel, numThreads, 1, 1);
+
     }
 
 
@@ -246,63 +239,18 @@ public class FluidRenderer3DCombined : ComputeShaderRenderer
             startIndicesBuffer.Dispose();
             startIndicesBuffer = null;
         }
-
     }
 
 
-    #region SpatialLookup
-
     Particle3D[] particleData;
-
-    Entry[] spatialLookup;
-
-    uint[] startIndices;
-
-
-
 
     // Based on positions, decide which particles are in which spatial cells.
     public void UpdateSpatialLookup()
     {
-        particleBuffer.GetData(particleData);
+        (ComputeBuffer a, ComputeBuffer b) = spatialHash.UpdateSpatialLookup(particleBuffer);
 
-        spatialLookup = new Entry[particleCount];
-        startIndices = new uint[particleCount];
-
-        int num = 0;
-
-        // Create (unordered) spatial lookup
-        Parallel.For(0, particleCount, i =>
-        {
-            (int cellX, int cellY, int cellZ) = PositionToCellCoord(particleData[i].position, smoothingRadius, bounds.center, bounds.extents);
-            uint hash = HashCell(cellX, cellY, cellZ);
-            uint cellKey = KeyFromHash(hash, (uint)(particleCount));
-            spatialLookup[i] = new Entry((uint)i, hash, cellKey);
-            startIndices[i] = int.MaxValue; // Reset start index
-
-            if (particleData[i].velocity == Vector3.positiveInfinity || particleData[i].density == 0)
-            {
-                num++;
-            }
-        });
-
-        // Sort by cell key
-        Array.Sort(spatialLookup);
-
-        // Calculate start indices of each unique cell key in the spatial lookup
-        Parallel.For(0, particleCount, i =>
-        {
-            uint key = spatialLookup[i].cellKey;
-            uint keyPrev = i == 0 ? int.MaxValue : spatialLookup[i - 1].cellKey;
-
-            if (key != keyPrev)
-            {
-                startIndices[key] = (uint) i;
-            }
-        });
-
-        spatialBuffer.SetData(spatialLookup);
-        startIndicesBuffer.SetData(startIndices);
+        spatialBuffer = a;
+        startIndicesBuffer = b;
 
         SetSpatialBuffers();
     }
@@ -311,46 +259,35 @@ public class FluidRenderer3DCombined : ComputeShaderRenderer
     {
         computeShader.SetBuffer(moveParticleKernel, "spatialLookup", spatialBuffer);
         computeShader.SetBuffer(moveParticleKernel, "startIndices", startIndicesBuffer);
+
+        computeShader.SetBuffer(densityMapKernel, "spatialLookup", spatialBuffer);
+        computeShader.SetBuffer(densityMapKernel, "startIndices", startIndicesBuffer);
     }
 
-
-    uint HashCell(int cellX, int cellY, int cellZ)
+    void UpdateDensityMap()
     {
-        const int PRIME1 = 15823;
-        const int PRIME2 = 14999;
-        const int PRIME3 = 9737333;
+        // convert bounds to unit and then scale by densityTextureRes
+        float maxAxis = Mathf.Max(bounds.size.x, bounds.size.y, bounds.size.z);
+        int w = Mathf.RoundToInt(bounds.size.x / maxAxis * densityTextureRes);
+        int h = Mathf.RoundToInt(bounds.size.y / maxAxis * densityTextureRes);
+        int d = Mathf.RoundToInt(bounds.size.z / maxAxis * densityTextureRes);
 
+        ComputeHelper.CreateRenderTexture3D(ref densityMap, w, h, d, GraphicsFormat.R16_SFloat, TextureWrapMode.Clamp);
 
-        const int PRIME4 = 31;
+        //Debug.Log(w + " " + h + "  " + d);
+        computeShader.SetTexture(densityMapKernel, "DensityMap", densityMap);
+        computeShader.SetInts("densityMapSize", densityMap.width, densityMap.height, densityMap.volumeDepth);
 
-        uint positiveX = (uint)(cellX + PRIME4);
-        uint positiveY = (uint)(cellY + PRIME4);
-        uint positiveZ = (uint)(cellZ + PRIME4);
+        // set buffers
 
-        uint hash = positiveX * PRIME1 + positiveY * PRIME2 + positiveZ * PRIME3;
-        //hash = hash & 0x7fffffff; // force non-negative (mask sign bit)
+        int wi = Mathf.CeilToInt(densityMap.width / 8.0f);
+        int hi = Mathf.CeilToInt(densityMap.height / 8.0f);
+        int di = Mathf.CeilToInt(densityMap.volumeDepth / 8.0f);
 
-        return (uint)hash;
+        computeShader.Dispatch(densityMapKernel, wi, hi, di);
+
     }
 
-    (int, int, int) PositionToCellCoord(Vector3 position, float smoothingRadius, float3 boundsCenter, float3 boundsExtents)
-    {
-        // roots position based on the bounds center and extents
-        Vector3 offset = new Vector3(boundsCenter.x - boundsExtents.x, boundsCenter.y - boundsExtents.y, boundsCenter.z - boundsExtents.z);
-
-        int x = (int) ((position.x - offset.x) / smoothingRadius);
-        int y = (int) ((position.y - offset.y) / smoothingRadius);
-        int z = (int) ((position.z - offset.z) / smoothingRadius);
-
-        return (x, y, z);
-    }
-
-    uint KeyFromHash(uint hash, uint tableSize)
-    { 
-        return hash % tableSize; 
-    }
-    
-    #endregion
 }
 
 
