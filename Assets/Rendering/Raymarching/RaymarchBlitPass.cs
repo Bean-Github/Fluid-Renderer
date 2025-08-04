@@ -16,8 +16,8 @@ internal class ColorBlitPass : ScriptableRenderPass
 
     // Misc
     float m_VolumeValueOffset = 150;
-    float m_Intensity;
 
+    float m_IndexOfRefraction;
 
     Vector3 m_BoxBoundsMin;
     Vector3 m_BoxBoundsMax;
@@ -29,9 +29,10 @@ internal class ColorBlitPass : ScriptableRenderPass
 
     void SetValues()
     {
-        m_Material.SetFloat("_Intensity", m_Intensity);
         m_Material.SetVector("_BoxBoundsMin", m_BoxBoundsMin);
         m_Material.SetVector("_BoxBoundsMax", m_BoxBoundsMax);
+
+        m_Material.SetFloat("_IndexOfRefraction", m_IndexOfRefraction);
 
         m_Material.SetFloat("_StepSize", m_StepSize);
         m_Material.SetFloat("_DensityMultiplier", m_DensityMultiplier);
@@ -54,8 +55,11 @@ internal class ColorBlitPass : ScriptableRenderPass
     // gets the values from the renderer feature
     public void SetTarget(RTHandle colorHandle, BlitSettings blitSettings)
     {
+        if (blitSettings == null)
+            blitSettings = new RaymarchSettings();
+
         RaymarchSettings raymarchSettings = blitSettings as RaymarchSettings;
-        m_FluidRenderer = blitSettings.fluidRenderer;
+
         m_CameraColorTarget = colorHandle;
 
         // raymarch settings
@@ -68,11 +72,16 @@ internal class ColorBlitPass : ScriptableRenderPass
         m_LightStepSize = raymarchSettings.lightStepSize;
 
         // misc
-        m_Intensity = raymarchSettings.intensity;
         m_VolumeValueOffset = raymarchSettings.volumeValueOffset;
 
-        m_BoxBoundsMin = blitSettings.fluidRenderer.boundsCollider.bounds.min;
-        m_BoxBoundsMax = blitSettings.fluidRenderer.boundsCollider.bounds.max;
+        if (raymarchSettings.fluidRenderer != null)
+        {
+            m_FluidRenderer = raymarchSettings.fluidRenderer;
+            m_BoxBoundsMin = raymarchSettings.fluidRenderer.boundsCollider.bounds.min;
+            m_BoxBoundsMax = raymarchSettings.fluidRenderer.boundsCollider.bounds.max;
+        }
+
+        m_IndexOfRefraction = raymarchSettings.indexOfRefraction;
 
         m_ScatteringCoefficients = raymarchSettings.scatteringCoefficients;
     }

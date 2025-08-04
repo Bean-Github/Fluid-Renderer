@@ -12,6 +12,8 @@ public class RaymarchSettings : BlitSettings
     [Range(0.0f, 0.1f)]
     public float densityMultiplier = 1.0f;
 
+    [Range(0.01f, 4.0f)]
+    public float indexOfRefraction = 1.33f;
 
     // lighting
     public int numRefractions = 2;
@@ -22,5 +24,4 @@ public class RaymarchSettings : BlitSettings
     // misc
     public float volumeValueOffset = 150;
 
-    public float intensity;
 }

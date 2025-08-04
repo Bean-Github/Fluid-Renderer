@@ -7,7 +7,7 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Fluid render material
+  m_Name: Fullscreen Blit Material
   m_Shader: {fileID: -6465566751694194690, guid: c447c6e06069ad94c8000766da12f391, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0

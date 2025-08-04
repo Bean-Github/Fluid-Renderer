@@ -91,6 +91,7 @@ Shader "Custom/RaymarchBlit"
 
             float3 _ScatteringCoefficients;
 
+            float _IndexOfRefraction;
 
             // misc
             float volumeValueOffset;
@@ -130,6 +131,7 @@ Shader "Custom/RaymarchBlit"
                 float dstInsideBox = max(0, dstB - dstToBox);
                 return float2(dstToBox, dstInsideBox);
             }
+
             uint NextRandom(inout uint state)
             {
                 state = state * 747796405 + 2891336453;
@@ -165,7 +167,15 @@ Shader "Custom/RaymarchBlit"
                 float3 normal;
                 float densityAlongRay;
             };
-
+                        
+            struct SurfaceInfo
+            {
+                float3 pos;
+                float3 normal;
+                float densityAlongRay;
+                bool foundSurface;
+            };
+            
             struct LightResponse
             {
                 float3 refractDir;
@@ -273,10 +283,10 @@ Shader "Custom/RaymarchBlit"
                 LightResponse response;
 
                 // Calculate theta1
-                float theta1 = acos(dot(-inVec, normal)); // angle of incidence, assume inVec and normal are normalized
+                const float theta1 = acos(dot(-inVec, normal)); // angle of incidence, assume inVec and normal are normalized
 
                 // Calculate theta2 using Snell's Law
-                float theta2 = asin((iorA / iorB) * sin(theta1));
+                const float theta2 = asin((iorA / iorB) * sin(theta1));
 
                 // Calculate refraction direction
                 response.refractDir = normalize((iorA / iorB) * inVec + (iorA / iorB * cos(theta1) - cos(theta2)) * normal);
@@ -298,19 +308,17 @@ Shader "Custom/RaymarchBlit"
                 float density = 0.0;
 
                 float2 hit = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, origin, direction);
-                float dstToBox = hit.x;
-                float dstInsideBox = hit.y;
+
+                float dstTraveled = 0.0f;
+
+                const float nudge = stepSize * 0.5;
+                const float3 entryPos = origin + direction * (hit.x);
+                const float dstInsideBox = hit.y - (nudge + 0.01f);
 
                 if (dstInsideBox == 0.0f) {
                     // Ray does not intersect box, return 0 density
                     return 0.0f;
                 }
-
-                float dstTraveled = 0.0f;
-
-                float nudge = stepSize * 0.5;
-                float3 entryPos = origin + direction * (dstToBox);
-                dstInsideBox -= (nudge + 0.01f);
 
                 float3 rayPos = entryPos;
 
@@ -339,30 +347,19 @@ Shader "Custom/RaymarchBlit"
             Ray GetRay(float2 uv) {
                 
                 // construct ray per pixel
-                float2 ndc = uv * 2.0 - 1.0; // 0..1 UV -> -1..1 NDC
+                const float2 ndc = uv * 2.0 - 1.0; // 0..1 UV -> -1..1 NDC
 
-                float4 clip = float4(ndc, 0, -1); // clip space point
+                const float4 clip = float4(ndc, 0, -1); // clip space point
                  // project clip space to view space (2d to 3d)
                 float4 viewPos = mul(_CameraInvProjection, clip);  // still homogenous coordinates (non-singular w)
                 viewPos /= abs(viewPos.w) + 1e-6;  // perspective divide
                 // view space is a world space with camera at origin, looking down -Z axis
 
-                float3 rayDirWS = normalize(mul(_CameraToWorld, float4(viewPos.xyz, 0)).xyz);  // convert from camera space to world space (can ignore w now)
-                float3 rayOriginWS = GetCameraPositionWS();
+                const float3 rayDirWS = normalize(mul(_CameraToWorld, float4(viewPos.xyz, 0)).xyz);  // convert from camera space to world space (can ignore w now)
+                const float3 rayOriginWS = GetCameraPositionWS();
 
-                Ray returnedRay = CreateRay(rayOriginWS, rayDirWS);
-
-                return returnedRay;
+                return CreateRay(rayOriginWS, rayDirWS);
             }
-
-            
-            struct SurfaceInfo
-            {
-                float3 pos;
-                float3 normal;
-                float densityAlongRay;
-                bool foundSurface;
-            };
 
             HitInfo RayBox(float3 rayPos, float3 rayDir)
             {
@@ -380,56 +377,7 @@ Shader "Custom/RaymarchBlit"
                 return hitInfo;
             }
 
-            // SurfaceInfo FindNextSurface(float3 origin, float3 rayDir, bool findNextFluidEntryPoint, uint rngState, float rngWeight, float maxDst)
-            // {
-            //     SurfaceInfo info = (SurfaceInfo)0;
-            //     if (dot(rayDir, rayDir) < 0.5) return info;
-
-            //     float2 boundsDstInfo = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, origin, rayDir);
-
-            //     float r = (RandomValue(rngState) - 0.5) * _StepSize * 0.4 * 1;
-            //     bool hasExittedFluid = !IsInsideFluid(origin);
-            //     origin = origin + rayDir * (boundsDstInfo.x + r);
-
-            //     float stepSize = _StepSize;
-            //     bool hasEnteredFluid = false;
-            //     float3 lastPosInFluid = origin;
-
-            //     float dstToTest = boundsDstInfo[1] - (0.01f) * 2;
-
-            //     for (float dst = 0; dst < dstToTest; dst += stepSize)
-            //     {
-            //         bool isLastStep = dst + stepSize >= dstToTest;
-            //         float3 samplePos = origin + rayDir * dst;
-            //         float thickness = SampleDensity(samplePos) * _DensityMultiplier * stepSize;
-            //         bool insideFluid = thickness > 0;
-            //         if (insideFluid)
-            //         {
-            //             hasEnteredFluid = true;
-            //             lastPosInFluid = samplePos;
-            //             if (dst <= maxDst)
-            //             {
-            //                 info.densityAlongRay += thickness;
-            //             }
-            //         }
-
-            //         if (!insideFluid) hasExittedFluid = true;
-
-            //         bool found;
-            //         if (findNextFluidEntryPoint) found = insideFluid && hasExittedFluid;
-            //         else found = hasEnteredFluid && (!insideFluid || isLastStep);
-
-            //         if (found)
-            //         {
-            //             info.pos = lastPosInFluid;
-            //             info.foundSurface = true;
-            //             break;
-            //         }
-            //     }
-
-            //     return info;
-            // }
-            HitInfo FindNextSurface(float3 origin, float3 rayDir, bool travellingThroughFluid)
+            HitInfo FindNextSurface(float3 origin, float3 rayDir, bool travellingThroughFluid, float maxDst)
             {
                 HitInfo info = (HitInfo)0;
                 if (dot(rayDir, rayDir) < 0.5) return info;
@@ -437,26 +385,32 @@ Shader "Custom/RaymarchBlit"
                 float2 boundsDstInfo = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, origin, rayDir);
 
                 bool hasExittedFluid = !IsInsideFluid(origin);
+                origin = origin + rayDir * (boundsDstInfo.x);
 
-                float stepSize = _StepSize;
+                const float stepSize = _StepSize;
+                const float densityMulti = _DensityMultiplier;
+
                 bool hasEnteredFluid = false;
                 float3 lastPosInFluid = origin;
 
-                float dstToTest = boundsDstInfo[1] - (0.01f) * 2;
+                const float dstToTest = boundsDstInfo.y - (0.01f) * 2;
 
                 for (float dst = 0; dst < dstToTest; dst += stepSize)
                 {
                     bool isLastStep = dst + stepSize >= dstToTest; // at border of testing
                     float3 samplePos = origin + rayDir * dst;
-                    float densityAlongStep = SampleDensity(samplePos) * _DensityMultiplier * stepSize;
+                    float densityAlongStep = SampleDensity(samplePos) * densityMulti * stepSize;
 
                     bool insideFluid = densityAlongStep > 0; // we are now inside the fluid
                     if (insideFluid)
                     {
                         hasEnteredFluid = true;
                         lastPosInFluid = samplePos;
-                        
-                        info.densityAlongRay += densityAlongStep; // add onto the density as we go!
+
+                        if (dst <= maxDst)
+                        {
+                            info.densityAlongRay += densityAlongStep; // add onto the density as we go!
+                        }
                     }
 
                     if (!insideFluid) hasExittedFluid = true;
@@ -485,7 +439,9 @@ Shader "Custom/RaymarchBlit"
                     {
                         info.didHit = true;
                         info.hitPoint = lastPosInFluid;
+
                         info.normal = CalculateNormal(lastPosInFluid);
+                        if (dot(info.normal, rayDir) > 0) info.normal = -info.normal;
 
                         break;
                     }
@@ -519,16 +475,15 @@ Shader "Custom/RaymarchBlit"
             // Get light from environment
             float3 LightEnvironment(float3 rayPos, float3 rayDir)
             {
-                return 1;
                 return SampleSky(rayDir); // Placeholder for light color
             }
 
             // -- // -- //
 
             // RAYMARCHING
-            // float3 Raymarch(float2 uv, Ray ray, float stepSize)
+            // float3 Raymarch(Ray ray)
             // {
-            //     uint rngState = (uint)(uv.x * 1243 + uv.y * 96456);
+            //     //uint rngState = (uint)(uv.x * 1243 + uv.y * 96456);
 
             //     float3 rayDir = ray.direction;
             //     float3 rayPos = ray.origin;
@@ -537,15 +492,19 @@ Shader "Custom/RaymarchBlit"
             //     float3 transmittance = 1;
             //     float3 light = 0;
 
+
+
             //     for (int i = 0; i < _NumRefractions; i++)
             //     {
             //         float densityStepSize = _LightStepSize * (i + 1); // increase step size with each iteration
             //         bool searchForNextFluidEntryPoint = !travellingThroughFluid;
 
             //         float2 cubeHit = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, rayPos, rayDir);
-            //         SurfaceInfo surfaceInfo = FindNextSurface(rayPos, rayDir, searchForNextFluidEntryPoint, rngState, i == 0 ? 1 : 0, cubeHit.x);
-            //         bool useCubeHit = cubeHit.y >= 0 && cubeHit.x < length(surfaceInfo.pos - rayPos);
-            //         if (!surfaceInfo.foundSurface) break;
+
+            //         HitInfo surfaceInfo = FindNextSurface(rayPos, rayDir, searchForNextFluidEntryPoint, cubeHit.y);
+            //         bool useCubeHit = cubeHit.y >= 0 && cubeHit.x < length(surfaceInfo.hitPoint - rayPos);
+
+            //         if (!surfaceInfo.didHit) break;
 
             //         transmittance *= exp(-surfaceInfo.densityAlongRay * _ScatteringCoefficients);
 
@@ -568,26 +527,26 @@ Shader "Custom/RaymarchBlit"
             //         //     break;
             //         // }
 
-            //         float3 normal = CalculateNormal(surfaceInfo.pos);
+            //         float3 normal = CalculateNormal(surfaceInfo.hitPoint);
             //         if (dot(normal, rayDir) > 0) normal = -normal;
 
             //         // Indicies of refraction
             //         float iorA = travellingThroughFluid ? 1.33f : 1;
-            //         float iorB =travellingThroughFluid ? 1 : 1.33f;
+            //         float iorB = travellingThroughFluid ? 1 : 1.33f;
 
             //         // Calculate reflection and refraction, and choose which path to follow
             //         LightResponse lightResponse = CalculateRefractionAndReflection(rayDir, normal, iorA, iorB);
-            //         float densityAlongRefractRay = CalculateDensityAlongRay(surfaceInfo.pos, lightResponse.refractDir, densityStepSize);
-            //         float densityAlongReflectRay = CalculateDensityAlongRay(surfaceInfo.pos, lightResponse.reflectDir, densityStepSize);
+            //         float densityAlongRefractRay = CalculateDensityAlongRay(surfaceInfo.hitPoint, lightResponse.refractDir, densityStepSize);
+            //         float densityAlongReflectRay = CalculateDensityAlongRay(surfaceInfo.hitPoint, lightResponse.reflectDir, densityStepSize);
             //         bool traceRefractedRay = densityAlongRefractRay * lightResponse.refractStrength > densityAlongReflectRay * lightResponse.reflectStrength;
             //         travellingThroughFluid = traceRefractedRay != travellingThroughFluid;
 
             //         // Approximate less interesting path
-            //         if (traceRefractedRay) light += LightEnvironment(surfaceInfo.pos, lightResponse.reflectDir) * transmittance * exp(-densityAlongReflectRay * _ScatteringCoefficients) * lightResponse.reflectStrength;
-            //         else light += LightEnvironment(surfaceInfo.pos, lightResponse.refractDir) * transmittance * exp(-densityAlongRefractRay * _ScatteringCoefficients) * lightResponse.refractStrength;
+            //         if (traceRefractedRay) light += LightEnvironment(surfaceInfo.hitPoint, lightResponse.reflectDir) * transmittance * exp(-densityAlongReflectRay * _ScatteringCoefficients) * lightResponse.reflectStrength;
+            //         else light += LightEnvironment(surfaceInfo.hitPoint, lightResponse.refractDir) * transmittance * exp(-densityAlongRefractRay * _ScatteringCoefficients) * lightResponse.refractStrength;
 
             //         // Set up ray for more interesting path
-            //         rayPos = surfaceInfo.pos;
+            //         rayPos = surfaceInfo.hitPoint;
             //         rayDir = traceRefractedRay ? lightResponse.refractDir : lightResponse.reflectDir;
             //         transmittance *= (traceRefractedRay ? lightResponse.refractStrength : lightResponse.reflectStrength);
             //     }
@@ -598,68 +557,83 @@ Shader "Custom/RaymarchBlit"
 
             //     return 1 - light;
             // }
-
+            /// idea: 
+            // initialize a light color that you will grab
+            // 1. hit a surface, if no hit then break;
+            // 2. calculate the density along the ray and multiply that onto the transmittance
+            //  2. calculate normal, determine if inside fluid, find indices of refraction, calculate reflection and refraction
+            //     directions. Also calculate the reflect and refraction strengths
+            // 3. set ray to follow what you calculated 
+            // 4. multiply transmittance by either refract or reflection strength
+            // 5. approximate light from environment, add to result
+            // after loop:
+            // 6. after you exit the loop, the ray will point in a certain direction. this is the main bit of light that the ray will consume
+            
             float3 Raymarch(Ray ray) // takes in the uv ray from a pixel
             {
                 float3 lightColor = float3(0, 0, 0); // Initialize light color
 
                 // initialize transmittance to 1.0
-                float transmittance = 1.0;
+                float3 transmittance = 1;
 
-                float indexOfRefraction = 1.33f; // Default index of refraction for water, for now
+                float3 rayPos = ray.origin;
+                float3 rayDir = ray.direction;
 
-                // find the next surface hit
-                float2 hitBox = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, ray.origin, ray.direction);
+                //float3 origin = ray.origin + ray.direction * dstToBox; // calculate the origin of the ray at the intersection point
+                bool travellingThroughFluid = IsInsideFluid(rayPos);
 
-                float dstToBox = hitBox.x;
-                float dstInsideBox = hitBox.y;
+                const float3 scatterCoeff = _ScatteringCoefficients;
 
-                if (dstInsideBox <= 0.0f) {
-                    // Ray does not intersect box, return nothing
-                    return lightColor;
-                }
-
-                float3 origin = ray.origin + ray.direction * dstToBox; // calculate the origin of the ray at the intersection point
-                bool travellingThroughFluid = IsInsideFluid(ray.origin);
 
                 // within a loop of refractions,
                 for (int i = 0; i < _NumRefractions; i++)
                 {
                     float densityStepSize = _LightStepSize * (i + 1); // increase step size with each iteration as each iteration becomes less important
 
-                    HitInfo hitInfo = FindNextSurface(origin, ray.direction, travellingThroughFluid);
+                    // find the next surface hit
+                    float2 hitBox = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, rayPos, rayDir);
+
+                    float dstToBox = hitBox.x;
+                    float dstInsideBox = hitBox.y;
+
+                    HitInfo hitInfo = FindNextSurface(rayPos, rayDir, travellingThroughFluid, dstInsideBox);
+
                     if (!hitInfo.didHit) {
                         // if no hit, then break out of the loop
                         break;
                     }
 
                     // calculate the density along the ray and multiply
-                    transmittance *= exp(-hitInfo.densityAlongRay * _ScatteringCoefficients); // todo: also multiply by scattering coeff
+                    transmittance *= exp(-hitInfo.densityAlongRay * scatterCoeff); // todo: also multiply by scattering coeff
 
-                    float iorA = travellingThroughFluid ? indexOfRefraction : 1.0f; // if inside fluid, use fluid IOR, otherwise use air IOR
-                    float iorB = travellingThroughFluid ? 1.0f : indexOfRefraction; // if inside fluid, use air IOR, otherwise use fluid IOR
+                    float iorA = travellingThroughFluid ? _IndexOfRefraction : 1.0f; // if inside fluid, use fluid IOR, otherwise use air IOR
+                    float iorB = 1.0 + _IndexOfRefraction - iorA; // if inside fluid, use air IOR, otherwise use fluid IOR
 
                     // calculate reflection and refraction directions
-                    LightResponse lightResponse = CalculateRefractionAndReflection(ray.direction, hitInfo.normal, iorA, iorB);
+                    LightResponse lightResponse = CalculateRefractionAndReflection(rayDir, hitInfo.normal, iorA, iorB);
 
                     float densityRefract = CalculateDensityAlongRay(hitInfo.hitPoint, lightResponse.refractDir, densityStepSize);
                     float densityReflect = CalculateDensityAlongRay(hitInfo.hitPoint, lightResponse.reflectDir, densityStepSize);
 
-                    bool isRefracting = (densityRefract * lightResponse.refractStrength > densityReflect * lightResponse.reflectStrength); 
+                    bool isRefracting = (densityRefract * lightResponse.refractStrength) > (densityReflect * lightResponse.reflectStrength); 
 
-                    float3 primaryDir = isRefracting ? lightResponse.refractDir : lightResponse.reflectDir;
-                    float3 secondaryDir = isRefracting ? lightResponse.reflectDir : lightResponse.refractDir;
+                    // cheeky way to optimize if statement (if refracting, primaryDir = refractDir)
+                    float3 primaryDir = lerp(lightResponse.reflectDir, lightResponse.refractDir, isRefracting);
+                    float3 secondaryDir = lerp(lightResponse.refractDir, lightResponse.reflectDir, isRefracting);
 
-                    float3 secondaryFactor = isRefracting ? 
-                        lightResponse.reflectStrength * exp(-densityReflect * _ScatteringCoefficients) : 
-                        lightResponse.refractStrength * exp(-densityRefract * _ScatteringCoefficients); // factor for the secondary direction
+                    float secondaryStrength = lerp(lightResponse.refractStrength, lightResponse.reflectStrength, isRefracting);
+                    float secondaryDensity  = lerp(densityRefract, densityReflect, !isRefracting);
 
+                    float3 secondaryFactor = secondaryStrength * exp(-secondaryDensity * scatterCoeff);
+                    
+                    // approximate less interesting path?
                     lightColor += LightEnvironment(hitInfo.hitPoint, secondaryDir) * transmittance * secondaryFactor;
 
-                    ray = CreateRay(hitInfo.hitPoint, primaryDir); // set ray to follow the refraction direction)
+                    rayPos = hitInfo.hitPoint;
+                    rayDir = primaryDir;
 
-                    transmittance *= isRefracting ? lightResponse.refractStrength : lightResponse.reflectStrength; // multiply transmittance by the strength of the refraction or reflection
-                
+                    transmittance *= (isRefracting ? lightResponse.refractStrength : lightResponse.reflectStrength); // multiply transmittance by the strength of the refraction or reflection
+                    
                     // if refracting and travellingThroughFluid, then we are no longer travellingThroughFluid
                     // if refracting and not travellingThroughFluid, then we are now travellingThroughFluid
                     // if reflecting and travellingThroughFluid, then we are now travellingThroughFluid
@@ -668,21 +642,11 @@ Shader "Custom/RaymarchBlit"
                 }
 
                 // Add light from the environment based on the final ray direction
-                lightColor += LightEnvironment(ray.origin, ray.direction) * transmittance * 
-                    exp(-CalculateDensityAlongRay(ray.origin, ray.direction, _LightStepSize) * _ScatteringCoefficients); 
+                const float densityRemainder = CalculateDensityAlongRay(rayPos, rayDir, _LightStepSize);
 
-                return 1 - lightColor; // Return the final light color
-                /// new idea: 
-                // initialize a light color that you will grab
-                // 1. hit a surface, if no hit then break;
-                // 2. calculate the density along the ray and multiply that onto the transmittance
-                //  2. calculate normal, determine if inside fluid, find indices of refraction, calculate reflection and refraction
-                //     directions. Also calculate the reflect and refraction strengths
-                // 3. set ray to follow what you calculated 
-                // 4. multiply transmittance by either refract or reflection strength
-                // 5. approximate light from environment, add to result
-                // after loop:
-                // 6. after you exit the loop, the ray will point in a certain direction. this is the main bit of light that the ray will consume
+                lightColor += LightEnvironment(rayPos, rayDir) * transmittance * exp(-densityRemainder * scatterCoeff); 
+
+                return lightColor; // Return the final light color
             }
 
 
@@ -693,14 +657,12 @@ Shader "Custom/RaymarchBlit"
                 
                 float4 worldColor = SAMPLE_TEXTURE2D_X(_CameraOpaqueTexture, sampler_CameraOpaqueTexture, input.uv);
 
-
                 Ray ray = GetRay(input.uv);
                 worldColor = float4(LightEnvironment(ray.origin, ray.direction),0); // Clear color to black, for debugging
 
-                worldColor = 0;
+                //worldColor = 0;
                 // returns (dstToBox, dstInsideBox)
                 float2 hit = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, ray.origin, ray.direction);
-
 
                 // sample depth texture to get flattened 0-1 depth
                 float nonLinearDepthTexture = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, sampler_CameraDepthTexture, input.uv);
