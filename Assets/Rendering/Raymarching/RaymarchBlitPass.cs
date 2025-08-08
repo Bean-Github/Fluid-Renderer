@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
-internal class ColorBlitPass : ScriptableRenderPass
+internal class RaymarchBlitPass : ScriptableRenderPass
 {
     // Key
     float m_DensityMultiplier = 1.0f; // multiplier for the density map
@@ -24,6 +24,8 @@ internal class ColorBlitPass : ScriptableRenderPass
 
     Matrix4x4 cameraToWorldMatrix => Camera.main.cameraToWorldMatrix;
     Matrix4x4 projectionMatrix => Camera.main.projectionMatrix;
+
+    Matrix4x4 worldToCameraMatrix => Camera.main.worldToCameraMatrix;
 
     FluidRenderer3DCombined m_FluidRenderer;
 
@@ -94,7 +96,7 @@ internal class ColorBlitPass : ScriptableRenderPass
     Material m_Material;
     RTHandle m_CameraColorTarget;
 
-    public ColorBlitPass(Material material)
+    public RaymarchBlitPass(Material material)
     {
         m_Material = material;
         renderPassEvent = RenderPassEvent.BeforeRenderingTransparents;
@@ -125,6 +127,8 @@ internal class ColorBlitPass : ScriptableRenderPass
 
         cmd.SetGlobalMatrix("_CameraToWorld", cameraToWorldMatrix);
         cmd.SetGlobalMatrix("_CameraInvProjection", projectionMatrix.inverse);
+        cmd.SetGlobalMatrix("_CameraProjection", projectionMatrix);
+        cmd.SetGlobalMatrix("_WorldToCamera", worldToCameraMatrix);
 
         context.ExecuteCommandBuffer(cmd);
         cmd.Clear();

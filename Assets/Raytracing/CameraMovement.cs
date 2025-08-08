@@ -17,9 +17,17 @@ public class CameraMovement : MonoBehaviour
         Cursor.lockState = CursorLockMode.Locked;
     }
 
+    public bool toggled = true;
+
     // Update is called once per frame
     void Update()
     {
+        if (Input.GetKeyUp(KeyCode.L))
+        {
+            toggled = !toggled;
+        }
+        if (!toggled) return;
+
         if (Input.GetKey(KeyCode.LeftShift))
         {
             m_CurrMoveSpeed = moveSpeed * 10f;

@@ -8,10 +8,6 @@ public class ParticleManager : MonoBehaviour
 
     public float maxVelocity = 5.0f;
 
-    private void Start()
-    {
-    }
-
     public void RenderParticles(ComputeBuffer particleBuffer, int count, Bounds bounds)
     {
 

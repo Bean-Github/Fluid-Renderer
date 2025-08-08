@@ -474,5 +474,5 @@ void RenderDensityMap(uint3 id : SV_DispatchThreadID)
     // Convert threadID to a world-space position, and sample the fluid density at that point
     float3 texturePos = (float3) id / (densityMapSize - 1.0);
     float3 worldPos = (texturePos - 0.5) * boundsExtents * 2.0 + boundsCenter;
-    DensityMap[id] = CalculateDensity(worldPos)[1];
+    DensityMap[id] = CalculateDensity(worldPos)[0];
 }

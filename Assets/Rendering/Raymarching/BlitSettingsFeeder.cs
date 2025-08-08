@@ -53,15 +53,14 @@ public class BlitSettingsFeeder : MonoBehaviour
     public void SetStaticValues()
     {
         blitSettingsStatic = m_BlitSettings;
-
     }
 
 
-    public static BlitSettings GetFluidRenderer()
+    public static BlitSettings GetBlitSettings()
     {
         if (blitSettingsStatic == null)
         {
-            Debug.LogWarning("FluidRenderer3DCombined is not set in BlitSettingsFeeder. Please assign it in the scene.");
+            Debug.LogWarning("BlitSetting is not set in BlitSettingsFeeder. Please assign it in the scene.");
         }
         return blitSettingsStatic;
     }

@@ -48,7 +48,7 @@ public class FluidRenderer3DCombined : ComputeShaderRenderer
     public float mouseRadius;
 
     // buffers
-    ComputeBuffer particleBuffer;
+    public ComputeBuffer particleBuffer;
     ComputeBuffer spatialBuffer;
     ComputeBuffer startIndicesBuffer;
 
@@ -62,6 +62,11 @@ public class FluidRenderer3DCombined : ComputeShaderRenderer
     public bool renderParticles = true;
     public float particleRadius = 0.1f;
     public ParticleManager particleManager;
+
+
+    [Header("Screen Space Settings")]
+    public bool renderScreenSpace = false;
+    public ScreenSpaceRenderer screenSpaceRenderer;
 
     // kernels
     int moveParticleKernel;
@@ -190,7 +195,12 @@ public class FluidRenderer3DCombined : ComputeShaderRenderer
 
     protected override void Update()
     {
-        if (renderParticles) particleManager?.RenderParticles(particleBuffer, particleCount, bounds);
+        if (renderScreenSpace)
+        {
+            screenSpaceRenderer?.RenderParticles(particleBuffer, particleCount, particleRadius, bounds);
+        }
+
+        else if (renderParticles) particleManager?.RenderParticles(particleBuffer, particleCount, bounds);
     }
 
 

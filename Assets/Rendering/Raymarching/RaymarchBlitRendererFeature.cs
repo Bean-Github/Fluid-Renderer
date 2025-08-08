@@ -2,14 +2,14 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
-internal class ColorBlitRendererFeature : ScriptableRendererFeature
+internal class RaymarchBlitRendererFeature : ScriptableRendererFeature
 {
     public Shader m_Shader;
 
 
     Material m_Material;
 
-    ColorBlitPass m_RenderPass = null;
+    RaymarchBlitPass m_RenderPass = null;
 
     public override void AddRenderPasses(ScriptableRenderer renderer,
                                     ref RenderingData renderingData)
@@ -28,7 +28,7 @@ internal class ColorBlitRendererFeature : ScriptableRendererFeature
             m_RenderPass.ConfigureInput(ScriptableRenderPassInput.Color);
 
             // IMPORTANT: Set the VALUES for the render pass
-            m_RenderPass.SetTarget(renderer.cameraColorTargetHandle, BlitSettingsFeeder.GetFluidRenderer());
+            m_RenderPass.SetTarget(renderer.cameraColorTargetHandle, BlitSettingsFeeder.GetBlitSettings());
 
         }
     }
@@ -36,7 +36,7 @@ internal class ColorBlitRendererFeature : ScriptableRendererFeature
     public override void Create()
     {
         m_Material = CoreUtils.CreateEngineMaterial(m_Shader);
-        m_RenderPass = new ColorBlitPass(m_Material);
+        m_RenderPass = new RaymarchBlitPass(m_Material);
     }
 
     protected override void Dispose(bool disposing)
