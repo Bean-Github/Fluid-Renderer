@@ -22,6 +22,12 @@ internal class RaymarchBlitPass : ScriptableRenderPass
     Vector3 m_BoxBoundsMin;
     Vector3 m_BoxBoundsMax;
 
+    Vector3 m_TestCubeBoundsMin;
+    Vector3 m_TestCubeBoundsMax;
+
+    Matrix4x4 m_TestCubeLocalToWorld;
+    Matrix4x4 m_TestCubeWorldToLocal;
+
     Matrix4x4 cameraToWorldMatrix => Camera.main.cameraToWorldMatrix;
     Matrix4x4 projectionMatrix => Camera.main.projectionMatrix;
 
@@ -46,6 +52,11 @@ internal class RaymarchBlitPass : ScriptableRenderPass
 
         m_Material.SetVector("_ScatteringCoefficients", m_ScatteringCoefficients);
 
+        m_Material.SetVector("_TestCubeBoundsMin", m_TestCubeBoundsMin);
+        m_Material.SetVector("_TestCubeBoundsMax", m_TestCubeBoundsMax);
+
+        m_Material.SetMatrix("_TestCubeLocalToWorld", m_TestCubeLocalToWorld);
+        m_Material.SetMatrix("_TestCubeWorldToLocal", m_TestCubeWorldToLocal);
 
         if (m_FluidRenderer?.densityMap != null)
         {
@@ -86,6 +97,13 @@ internal class RaymarchBlitPass : ScriptableRenderPass
         m_IndexOfRefraction = raymarchSettings.indexOfRefraction;
 
         m_ScatteringCoefficients = raymarchSettings.scatteringCoefficients;
+
+
+        m_TestCubeBoundsMin = raymarchSettings.testCubeCollider.bounds.min;
+        m_TestCubeBoundsMax = raymarchSettings.testCubeCollider.bounds.max;
+
+        m_TestCubeLocalToWorld = raymarchSettings.testCubeTransform.localToWorldMatrix;
+        m_TestCubeWorldToLocal = raymarchSettings.testCubeTransform.worldToLocalMatrix;
     }
 
 

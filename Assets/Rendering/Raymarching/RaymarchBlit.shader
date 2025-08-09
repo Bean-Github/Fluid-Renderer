@@ -99,6 +99,13 @@ Shader "Custom/RaymarchBlit"
             float3 _BoxBoundsMin;
             float3 _BoxBoundsMax;
 
+            // test cube
+            float3 _TestCubeBoundsMin;
+            float3 _TestCubeBoundsMax;
+
+            float4x4 _TestCubeLocalToWorld;
+            float4x4 _TestCubeWorldToLocal;
+
             TEXTURE3D(_DensityMap);
             SAMPLER(sampler_DensityMap);
 
@@ -167,13 +174,14 @@ Shader "Custom/RaymarchBlit"
                 float3 normal;
                 float densityAlongRay;
             };
-                        
-            struct SurfaceInfo
+
+            struct CubeInfo
             {
-                float3 pos;
+                bool didHit;
+                bool isInside;
+                float dst;
+                float3 hitPoint;
                 float3 normal;
-                float densityAlongRay;
-                bool foundSurface;
             };
             
             struct LightResponse
@@ -192,7 +200,7 @@ Shader "Custom/RaymarchBlit"
             {
                 float3 boundsSize = _BoxBoundsMax - _BoxBoundsMin;
 
-                float3 uvw = (pos + boundsSize * 0.5) / boundsSize;
+                float3 uvw = (pos - _BoxBoundsMin) / (_BoxBoundsMax - _BoxBoundsMin);
 
                 const float epsilon = 0.0001;
                 bool isEdge = any(uvw >= 1 - epsilon || uvw <= epsilon);
@@ -212,7 +220,7 @@ Shader "Custom/RaymarchBlit"
             {
                 float3 boundsSize = _BoxBoundsMax - _BoxBoundsMin;
 
-                float3 uvw = (pos + boundsSize * 0.5) / boundsSize;
+                float3 uvw = (pos - _BoxBoundsMin) / (_BoxBoundsMax - _BoxBoundsMin);
 
                 const float s = 0.1;
                 float3 offsetX = float3(1, 0, 0) * s;
@@ -263,6 +271,16 @@ Shader "Custom/RaymarchBlit"
                 return (rPerpendicular + rParallel) / 2;
             }
 
+            float3 Refract(float3 inDir, float3 normal, float iorA, float iorB)
+            {
+                float refractRatio = iorA / iorB;
+                float cosAngleIn = -dot(inDir, normal);
+                float sinSqr = refractRatio * refractRatio * (1.0 - cosAngleIn * cosAngleIn);
+                if (sinSqr > 1.0) 
+                    return reflect(inDir, normal); // total internal reflection (handle as reflect)
+                return refractRatio * inDir + (refractRatio * cosAngleIn - sqrt(1 - sinSqr)) * normal;
+            }
+
             LightResponse CalculateRefractionAndReflection(float3 inVec, float3 normal, float iorA, float iorB)
             {
                 LightResponse response;
@@ -274,7 +292,9 @@ Shader "Custom/RaymarchBlit"
                 const float theta2 = asin((iorA / iorB) * sin(theta1));
 
                 // Calculate refraction direction
-                response.refractDir = normalize((iorA / iorB) * inVec + (iorA / iorB * cos(theta1) - cos(theta2)) * normal);
+                response.refractDir = Refract(inVec, normal, iorA, iorB);
+                
+                //normalize((iorA / iorB) * inVec + (iorA / iorB * cos(theta1) - cos(theta2)) * normal);
 
                 // Calculate reflection direction
                 response.reflectDir = reflect(inVec, normal);
@@ -288,6 +308,56 @@ Shader "Custom/RaymarchBlit"
                 return response; // Placeholder for now
             }
             
+            // Test intersection of ray with unit box centered at origin
+            CubeInfo RayUnitBox(float3 pos, float3 dir)
+            {
+                float3 minBox = -0.5f;
+                float3 maxBox = 0.5f;
+                float3 invDir = 1 / dir;
+
+                // Thanks to https://tavianator.com/2011/ray_box.html
+                float3 tMin = (minBox - pos) * invDir;
+                float3 tMax = (maxBox - pos) * invDir;
+                float3 t1 = min(tMin, tMax);
+                float3 t2 = max(tMin, tMax);
+                float tNear = max(max(t1.x, t1.y), t1.z);
+                float tFar = min(min(t2.x, t2.y), t2.z);
+
+                // Set hit info
+                CubeInfo cubeInfo = (CubeInfo)0;
+                cubeInfo.dst = 1.#INF;
+                cubeInfo.didHit = tFar >= tNear && tFar > 0;
+                cubeInfo.isInside = tFar > tNear && tNear <= 0;
+
+                if (cubeInfo.didHit)
+                {
+                    float hitDst = cubeInfo.isInside ? tFar : tNear;
+                    float3 hitPos = pos + dir * hitDst;
+
+                    cubeInfo.dst = hitDst;
+                    cubeInfo.hitPoint = hitPos;
+
+                    // Calculate normal
+                    float3 o = (1 - abs(hitPos));
+                    float3 absNormal = (o.x < o.y && o.x < o.z) ? float3(1, 0, 0) : (o.y < o.z) ? float3(0, 1, 0) : float3(0, 0, 1);
+                    cubeInfo.normal = absNormal * sign(hitPos) * (cubeInfo.isInside ? -1 : 1);
+                }
+
+                return cubeInfo;
+            }
+
+            CubeInfo RayCubeInfoBox(float3 rayPos, float3 rayDir, float4x4 localToWorld, float4x4 worldToLocal)
+            {
+                float3 posLocal = mul(worldToLocal, float4(rayPos, 1));
+                float3 dirLocal = mul(worldToLocal, float4(rayDir, 0));
+                CubeInfo cubeInfo = RayUnitBox(posLocal, dirLocal);
+                cubeInfo.normal = normalize(mul(localToWorld, float4(cubeInfo.normal, 0)));
+                cubeInfo.hitPoint = mul(localToWorld, float4(cubeInfo.hitPoint, 1));
+                if (cubeInfo.didHit) cubeInfo.dst = length(cubeInfo.hitPoint - rayPos);
+                return cubeInfo;
+            }
+
+
             float CalculateDensityAlongRay(float3 origin, float3 direction, float stepSize)
             {
                 float density = 0.0;
@@ -346,31 +416,15 @@ Shader "Custom/RaymarchBlit"
                 return CreateRay(rayOriginWS, rayDirWS);
             }
 
-            HitInfo RayBox(float3 rayPos, float3 rayDir)
-            {
-                HitInfo hitInfo = (HitInfo)0;
-                float2 hitBox = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, rayPos, rayDir);
-                hitInfo.didHit = hitBox.y > 0;
-                if (!hitInfo.didHit) return hitInfo;
-                // calculate the intersection point
-                hitInfo.hitPoint = rayPos + rayDir * hitBox.x;
-                // calculate the normal at the intersection point
-                hitInfo.normal = CalculateNormal(hitInfo.hitPoint);
-                // calculate density along ray
-                // check if inside fluid
-                // hitInfo.distance = hitBox.x;
-                return hitInfo;
-            }
-
             HitInfo FindNextSurface(float3 origin, float3 rayDir, bool travellingThroughFluid, float maxDst)
             {
                 HitInfo info = (HitInfo)0;
-                if (dot(rayDir, rayDir) < 0.5) return info;
+                //if (dot(rayDir, rayDir) < 0.5) return info;
 
                 float2 boundsDstInfo = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, origin, rayDir);
 
                 bool hasExittedFluid = !IsInsideFluid(origin);
-                origin = origin + rayDir * (boundsDstInfo.x);
+                origin = origin + rayDir * (boundsDstInfo.x + _StepSize);
 
                 const float stepSize = _StepSize;
                 const float densityMulti = _DensityMultiplier;
@@ -439,7 +493,7 @@ Shader "Custom/RaymarchBlit"
             float3 DirToSun() 
             {
                 Light mainLight = GetMainLight();
-                return -mainLight.direction;
+                return mainLight.direction;
             }
 
             float3 SampleSky(float3 dir)
@@ -456,12 +510,65 @@ Shader "Custom/RaymarchBlit"
                 return lerp(colGround, skyGradient, groundToSkyT) + sun * (groundToSkyT >= 1);
             }
 
+            float3 Environment(float3 rayPos, float3 worldDir)
+            {
+                // --- Floor parameters ---
+                const float floorHeight = -5.0;             // y = 0 plane
+                const float3 floorColor = float3(0.7, 0.7, 0.9); // dark gray/blueish
+
+                // Ray origin and direction
+                float3 rayDir = normalize(worldDir);
+
+                // --- Ray-plane intersection ---
+                float3 P0 = float3(0, -5, 0); // origin of plane
+                float3 n = float3(0, 1, 0); // normal of plane (directly up)
+
+                // Test Cube
+                CubeInfo cubeInfo = RayCubeInfoBox(rayPos, rayDir, _TestCubeLocalToWorld, _TestCubeWorldToLocal);
+
+                if (cubeInfo.isInside || cubeInfo.didHit)
+                {
+                    // color of test cube
+                    float3 cubeNormal = cubeInfo.normal;
+                    return saturate(dot(cubeNormal, DirToSun()) * 0.5f + 0.5f);
+                }
+
+                // CALCULATE INTERSECTION
+                // rayOrigin + t * rayDir = P (point on plane)
+                // dot((P - P0), n) = 0
+                // dot (rayOrigin + t * rayDir - P0, n) = 0
+                // dot(rayOrigin - P0, n) = -t dot(rayDir, n)
+                // t = dot(P0 - rayOrigin, n) / dot(rayDir, n)
+                float t = dot(P0 - rayPos, n) / dot(rayDir, n);
+
+                if (t > 0.0 && abs(rayDir.y) > 0.001f) // hit floor in front of camera
+                {
+                    float3 hitPos = rayPos + t * rayDir;
+
+                    // Simple checker pattern
+                    float2 checkerUV = hitPos.xz * 0.5;
+                    float checker = abs(fmod(floor(checkerUV.x) + floor(checkerUV.y), 2.0));  // remainder after dividing by 2, alternates 0, 1, diagonally
+                    float3 color = lerp(floorColor, floorColor * 1.2, checker);
+
+                    float shadowDensity = CalculateDensityAlongRay(hitPos, DirToSun(), _LightStepSize * 2) * 2;
+
+                    float3 shadowMap = exp(-shadowDensity * _ScatteringCoefficients);
+
+                    bool inShadow = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, hitPos, DirToSun()).y > 0;
+                    
+                    // TODO: test cube shadow
+
+                    return color * shadowMap;
+                }
+
+                // --- Sky ---
+                return SampleSky(worldDir);
+            }
 
             // Get light from environment
             float3 LightEnvironment(float3 rayPos, float3 rayDir)
             {
-                return 1;
-                return SampleSky(rayDir); // Placeholder for light color
+                return Environment(rayPos, rayDir); // Placeholder for light color
             }
 
             // -- // -- //
@@ -499,8 +606,10 @@ Shader "Custom/RaymarchBlit"
                 // within a loop of refractions,
                 for (int i = 0; i < _NumRefractions; i++)
                 {
-                    float densityStepSize = _LightStepSize * (i + 1); // increase step size with each iteration as each iteration becomes less important
+                    // check if hit test cube
 
+                    float densityStepSize = _LightStepSize * (i + 1); // increase step size with each iteration as each iteration becomes less important
+                    
                     // find the next surface hit
                     float2 hitBox = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, rayPos, rayDir);
 
@@ -509,13 +618,30 @@ Shader "Custom/RaymarchBlit"
 
                     HitInfo hitInfo = FindNextSurface(rayPos, rayDir, travellingThroughFluid, dstInsideBox);
 
+                     // calculate the density along the ray and multiply
+                    transmittance *= exp(-hitInfo.densityAlongRay * scatterCoeff); // todo: also multiply by scattering coeff
+                                    
+                    // Test Cube
+                    CubeInfo cubeInfo = RayCubeInfoBox(rayPos, rayDir, _TestCubeLocalToWorld, _TestCubeWorldToLocal);
+
+                    if (cubeInfo.didHit && cubeInfo.dst < length(hitInfo.hitPoint - rayPos))
+                    {
+                        if (travellingThroughFluid)
+                        {
+                            transmittance *= exp(-CalculateDensityAlongRay(cubeInfo.hitPoint, cubeInfo.normal, densityStepSize) * _ScatteringCoefficients);
+                        }
+                        lightColor += LightEnvironment(rayPos, rayDir) * transmittance;
+                        transmittance = 0;
+                        break;
+                    }
+
+
+
                     if (!hitInfo.didHit) {
                         // if no hit, then break out of the loop
                         break;
                     }
 
-                    // calculate the density along the ray and multiply
-                    transmittance *= exp(-hitInfo.densityAlongRay * scatterCoeff); // todo: also multiply by scattering coeff
 
                     float iorA = travellingThroughFluid ? _IndexOfRefraction : 1.0f; // if inside fluid, use fluid IOR, otherwise use air IOR
                     float iorB = 1.0 + _IndexOfRefraction - iorA; // if inside fluid, use air IOR, otherwise use fluid IOR
@@ -553,11 +679,12 @@ Shader "Custom/RaymarchBlit"
                 }
 
                 // Add light from the environment based on the final ray direction
-                const float densityRemainder = CalculateDensityAlongRay(rayPos, rayDir, _LightStepSize);
+                float densityRemainder = CalculateDensityAlongRay(rayPos, rayDir, _LightStepSize);
+                transmittance = max(transmittance, 0.1);
 
                 lightColor += LightEnvironment(rayPos, rayDir) * transmittance * exp(-densityRemainder * scatterCoeff); 
 
-                return 1 - lightColor; // Return the final light color
+                return lightColor; // Return the final light color
             }
 
 
@@ -565,13 +692,14 @@ Shader "Custom/RaymarchBlit"
             half4 frag (Varyings input) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
-                
-                float4 worldColor = SAMPLE_TEXTURE2D_X(_CameraOpaqueTexture, sampler_CameraOpaqueTexture, input.uv);
+
+
+                //float4 worldColor = SAMPLE_TEXTURE2D_X(_CameraOpaqueTexture, sampler_CameraOpaqueTexture, input.uv);
 
                 Ray ray = GetRay(input.uv);
-                worldColor = float4(LightEnvironment(ray.origin, ray.direction),0); // Clear color to black, for debugging
+                float4 worldColor = float4(LightEnvironment(ray.origin, ray.direction),0); // Clear color to black, for debugging
 
-                worldColor = 0;
+                //worldColor = 0;
                 // returns (dstToBox, dstInsideBox)
                 float2 hit = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, ray.origin, ray.direction);
 
@@ -580,12 +708,9 @@ Shader "Custom/RaymarchBlit"
                 // get world linear value from depth texture
                 float depthTexture = LinearEyeDepth(nonLinearDepthTexture, _ZBufferParams) * length(ray.direction);
 
-                // if ray intersects box and depth texture is less than the distance to the box (box is not obstructed) commit raymarching
-                if (hit.y > 0) {
-                    //float3 raymarch = Raymarch(input.uv, ray, _StepSize);
-                    float3 raymarch = Raymarch(ray);
-                    return float4(raymarch, 1); // if raymarch returns -1, return the world color
-                }
+                //float3 raymarch = Raymarch(input.uv, ray, _StepSize);
+                float3 raymarch = Raymarch(ray);
+                return float4(raymarch, 1); // if raymarch returns -1, return the world color
 
                 // If ray misses box, return the color from the camera opaque texture
                 return worldColor;

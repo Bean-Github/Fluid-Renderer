@@ -24,4 +24,8 @@ public class RaymarchSettings : BlitSettings
     // misc
     public float volumeValueOffset = 150;
 
+
+    // test cube
+    public BoxCollider testCubeCollider;
+    public Transform testCubeTransform;
 }
