@@ -208,6 +208,11 @@ Shader "Custom/RaymarchBlit"
 
                 return _DensityMap.SampleLevel(sampler_DensityMap, uvw, 0).r - volumeValueOffset;
             }
+            
+            float3 Transmittance(float thickness)
+            {
+                return exp(-thickness * _ScatteringCoefficients);
+            }
 
             float3 CalculateClosestFaceNormal(float3 boxSize, float3 p)
             {
@@ -250,7 +255,65 @@ Shader "Custom/RaymarchBlit"
                 return (boundsDstInfo.x <= 0 && boundsDstInfo.y > 0) && SampleDensity(pos) > 0;
             }
             
-            // Calculate the proportion of light that is reflected at the boundary between two media (via the fresnel equations)
+            // // Calculate the proportion of light that is reflected at the boundary between two media (via the fresnel equations)
+            // // Note: the amount of light refracted can be calculated as 1 minus this value
+            // float CalculateReflectance(float3 inDir, float3 normal, float iorA, float iorB)
+            // {
+            //     float refractRatio = iorA / iorB;
+            //     float cosAngleIn = -dot(inDir, normal);
+            //     float sinSqrAngleOfRefraction = refractRatio * refractRatio * (1 - cosAngleIn * cosAngleIn);
+            //     if (sinSqrAngleOfRefraction >= 1) return 1; // Ray is fully reflected, no refraction occurs
+
+            //     float cosAngleOfRefraction = sqrt(1 - sinSqrAngleOfRefraction);
+            //     // Perpendicular polarization
+            //     float rPerpendicular = (iorA * cosAngleIn - iorB * cosAngleOfRefraction) / (iorA * cosAngleIn + iorB * cosAngleOfRefraction);
+            //     rPerpendicular *= rPerpendicular;
+            //     // Parallel polarization
+            //     float rParallel = (iorB * cosAngleIn - iorA * cosAngleOfRefraction) / (iorB * cosAngleIn + iorA * cosAngleOfRefraction);
+            //     rParallel *= rParallel;
+
+            //     // Return the average of the perpendicular and parallel polarizations
+            //     return (rPerpendicular + rParallel) / 2;
+            // }
+
+            // float3 Refract(float3 inDir, float3 normal, float iorA, float iorB)
+            // {
+            //     float refractRatio = iorA / iorB;
+            //     float cosAngleIn = -dot(inDir, normal);
+            //     float sinSqr = refractRatio * refractRatio * (1.0 - cosAngleIn * cosAngleIn);
+            //     if (sinSqr > 1.0) 
+            //         return reflect(inDir, normal); // total internal reflection (handle as reflect)
+            //     return refractRatio * inDir + (refractRatio * cosAngleIn - sqrt(1 - sinSqr)) * normal;
+            // }
+
+            // LightResponse CalculateRefractionAndReflection(float3 inVec, float3 normal, float iorA, float iorB)
+            // {
+            //     LightResponse response;
+
+            //     // Calculate theta1
+            //     const float theta1 = acos(dot(-inVec, normal)); // angle of incidence, assume inVec and normal are normalized
+
+            //     // Calculate theta2 using Snell's Law
+            //     const float theta2 = asin((iorA / iorB) * sin(theta1));
+
+            //     // Calculate refraction direction
+            //     response.refractDir = Refract(inVec, normal, iorA, iorB);
+                
+            //     //normalize((iorA / iorB) * inVec + (iorA / iorB * cos(theta1) - cos(theta2)) * normal);
+
+            //     // Calculate reflection direction
+            //     response.reflectDir = reflect(inVec, normal);
+
+            //     // Calculate reflection and refraction strengths
+            //     // float R0 = pow((iorA - iorB) / (iorA + iorB), 2); // Fresnel reflectance at normal incidence
+            //     // float R = R0 + (1 - R0) * pow(1 - cos(theta1), 5); // Fresnel reflectance for arbitrary angle
+            //     response.reflectStrength = CalculateReflectance(inVec, normal, iorA, iorB); // Reflection strength
+            //     response.refractStrength = 1.0 - response.reflectStrength; // Refraction strength
+
+            //     return response; // Placeholder for now
+            // }
+
+                        // Calculate the proportion of light that is reflected at the boundary between two media (via the fresnel equations)
             // Note: the amount of light refracted can be calculated as 1 minus this value
             float CalculateReflectance(float3 inDir, float3 normal, float iorA, float iorB)
             {
@@ -271,43 +334,37 @@ Shader "Custom/RaymarchBlit"
                 return (rPerpendicular + rParallel) / 2;
             }
 
+
             float3 Refract(float3 inDir, float3 normal, float iorA, float iorB)
             {
                 float refractRatio = iorA / iorB;
                 float cosAngleIn = -dot(inDir, normal);
-                float sinSqr = refractRatio * refractRatio * (1.0 - cosAngleIn * cosAngleIn);
-                if (sinSqr > 1.0) 
-                    return reflect(inDir, normal); // total internal reflection (handle as reflect)
-                return refractRatio * inDir + (refractRatio * cosAngleIn - sqrt(1 - sinSqr)) * normal;
+                float sinSqrAngleOfRefraction = refractRatio * refractRatio * (1 - cosAngleIn * cosAngleIn);
+                if (sinSqrAngleOfRefraction > 1) return 0; // Ray is fully reflected, no refraction occurs
+
+                float3 refractDir = refractRatio * inDir + (refractRatio * cosAngleIn - sqrt(1 - sinSqrAngleOfRefraction)) * normal;
+                return refractDir;
             }
 
-            LightResponse CalculateRefractionAndReflection(float3 inVec, float3 normal, float iorA, float iorB)
+            float3 Reflect(float3 inDir, float3 normal)
             {
-                LightResponse response;
-
-                // Calculate theta1
-                const float theta1 = acos(dot(-inVec, normal)); // angle of incidence, assume inVec and normal are normalized
-
-                // Calculate theta2 using Snell's Law
-                const float theta2 = asin((iorA / iorB) * sin(theta1));
-
-                // Calculate refraction direction
-                response.refractDir = Refract(inVec, normal, iorA, iorB);
-                
-                //normalize((iorA / iorB) * inVec + (iorA / iorB * cos(theta1) - cos(theta2)) * normal);
-
-                // Calculate reflection direction
-                response.reflectDir = reflect(inVec, normal);
-
-                // Calculate reflection and refraction strengths
-                // float R0 = pow((iorA - iorB) / (iorA + iorB), 2); // Fresnel reflectance at normal incidence
-                // float R = R0 + (1 - R0) * pow(1 - cos(theta1), 5); // Fresnel reflectance for arbitrary angle
-                response.reflectStrength = CalculateReflectance(inVec, normal, iorA, iorB); // Reflection strength
-                response.refractStrength = 1.0 - response.reflectStrength; // Refraction strength
-
-                return response; // Placeholder for now
+                return inDir - 2 * dot(inDir, normal) * normal;
             }
-            
+
+
+            LightResponse CalculateReflectionAndRefraction(float3 inDir, float3 normal, float iorA, float iorB)
+            {
+                LightResponse result;
+
+                result.reflectStrength = CalculateReflectance(inDir, normal, iorA, iorB);
+                result.refractStrength = 1 - result.reflectStrength;
+
+                result.reflectDir = Reflect(inDir, normal);
+                result.refractDir = Refract(inDir, normal, iorA, iorB);
+
+                return result;
+            }
+
             // Test intersection of ray with unit box centered at origin
             CubeInfo RayUnitBox(float3 pos, float3 dir)
             {
@@ -358,45 +415,76 @@ Shader "Custom/RaymarchBlit"
             }
 
 
-            float CalculateDensityAlongRay(float3 origin, float3 direction, float stepSize)
-            {
-                float density = 0.0;
+            // float CalculateDensityAlongRay(float3 origin, float3 direction, float stepSize)
+            // {
+            //     float density = 0.0;
 
-                float2 hit = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, origin, direction);
+            //     float2 hit = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, origin, direction);
 
-                float dstTraveled = 0.0f;
+            //     float dstTraveled = 0.0f;
 
-                const float nudge = stepSize * 0.5;
-                const float3 entryPos = origin + direction * (hit.x);
-                const float dstInsideBox = hit.y - (nudge + 0.01f);
+            //     const float nudge = stepSize * 0.5;
+            //     const float3 entryPos = origin + direction * (hit.x);
+            //     const float dstInsideBox = hit.y - (nudge + 0.01f);
 
-                if (dstInsideBox == 0.0f) {
-                    // Ray does not intersect box, return 0 density
-                    return 0.0f;
-                }
+            //     if (dstInsideBox == 0.0f) {
+            //         // Ray does not intersect box, return 0 density
+            //         return 0.0f;
+            //     }
 
-                float3 rayPos = entryPos;
+            //     float3 rayPos = entryPos;
 
-                // while ray is still inside 
-                while (dstTraveled < dstInsideBox)
-                {
-                    rayPos = entryPos + direction * dstTraveled;
-                    dstTraveled += stepSize;
+            //     // while ray is still inside 
+            //     while (dstTraveled < dstInsideBox)
+            //     {
+            //         rayPos = entryPos + direction * dstTraveled;
+            //         dstTraveled += stepSize;
                     
-                    float densityAlongStep = SampleDensity(rayPos) * stepSize * _DensityMultiplier;
+            //         float densityAlongStep = SampleDensity(rayPos) * stepSize * _DensityMultiplier;
 
-                    if (densityAlongStep <= 0.0f)
+            //         if (densityAlongStep <= 0.0f)
+            //         {
+            //             continue;
+            //         }
+
+            //         density += densityAlongStep;
+            //     }
+
+            //     return density;
+            // }
+
+            
+            float CalculateDensityAlongRay(float3 rayPos, float3 rayDir, float stepSize)
+            {
+                // Test for non-normalize ray and return 0 in that case.
+                // This happens when refract direction is calculated, but ray is totally reflected
+                if (dot(rayDir, rayDir) < 0.9) return 0;
+
+                float2 boundsDstInfo = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, rayPos, rayDir);
+                float dstToBounds = boundsDstInfo[0];
+                float dstThroughBounds = boundsDstInfo[1];
+                if (dstThroughBounds <= 0) return 0;
+
+                float dstTravelled = 0;
+                float opticalDepth = 0;
+                float nudge = stepSize * 0.5;
+                float3 entryPoint = rayPos + rayDir * (dstToBounds + nudge);
+                dstThroughBounds -= (nudge + 0.01f);
+
+                while (dstTravelled < dstThroughBounds)
+                {
+                    rayPos = entryPoint + rayDir * dstTravelled;
+                    float density = SampleDensity(rayPos) * _DensityMultiplier * stepSize;
+                    if (density > 0)
                     {
-                        continue;
+                        opticalDepth += density;
                     }
-
-                    density += densityAlongStep;
+                    dstTravelled += stepSize;
                 }
 
-                return density;
-            }
+                return opticalDepth;
+            }  //todo: understand why doesnt go into infinite loops (at 0 refraction)
             // -- // -- //
-
 
             // Reconstruct ray direction from UV
             Ray GetRay(float2 uv) {
@@ -416,15 +504,18 @@ Shader "Custom/RaymarchBlit"
                 return CreateRay(rayOriginWS, rayDirWS);
             }
 
-            HitInfo FindNextSurface(float3 origin, float3 rayDir, bool travellingThroughFluid, float maxDst)
+            HitInfo FindNextSurface(float3 origin, float3 rayDir, bool searchForNextFluidEntryPoint, float maxDst, uint rngState, float rngWeight)
             {
                 HitInfo info = (HitInfo)0;
-                //if (dot(rayDir, rayDir) < 0.5) return info;
+                if (dot(rayDir, rayDir) < 0.5) return info;
 
                 float2 boundsDstInfo = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, origin, rayDir);
 
+                float r = (RandomValue(rngState) - 0.5) * _StepSize * 0.4 * 1;
+
+
                 bool hasExittedFluid = !IsInsideFluid(origin);
-                origin = origin + rayDir * (boundsDstInfo.x + _StepSize);
+                origin = origin + rayDir * (boundsDstInfo.x + r);
 
                 const float stepSize = _StepSize;
                 const float densityMulti = _DensityMultiplier;
@@ -456,7 +547,7 @@ Shader "Custom/RaymarchBlit"
 
                     // how can found be true?
                     bool found;
-                    if (!travellingThroughFluid) found = insideFluid && hasExittedFluid;
+                    if (searchForNextFluidEntryPoint) found = insideFluid && hasExittedFluid;
                     else found = hasEnteredFluid && (!insideFluid || isLastStep);
 
                     // if we are trying to find the next fluid entry, i.e. we are in air,
@@ -488,6 +579,7 @@ Shader "Custom/RaymarchBlit"
 
                 return info;
             }
+
 
             // ENVIRONMENT //
             float3 DirToSun() 
@@ -526,7 +618,7 @@ Shader "Custom/RaymarchBlit"
                 // Test Cube
                 CubeInfo cubeInfo = RayCubeInfoBox(rayPos, rayDir, _TestCubeLocalToWorld, _TestCubeWorldToLocal);
 
-                if (cubeInfo.isInside || cubeInfo.didHit)
+                if (cubeInfo.didHit)
                 {
                     // color of test cube
                     float3 cubeNormal = cubeInfo.normal;
@@ -587,7 +679,7 @@ Shader "Custom/RaymarchBlit"
             // after loop:
             // 6. after you exit the loop, the ray will point in a certain direction. this is the main bit of light that the ray will consume
             
-            float3 Raymarch(Ray ray) // takes in the uv ray from a pixel
+            float3 Raymarch(Ray ray, float2 uv) // takes in the uv ray from a pixel
             {
                 float3 lightColor = float3(0, 0, 0); // Initialize light color
 
@@ -602,6 +694,7 @@ Shader "Custom/RaymarchBlit"
 
                 const float3 scatterCoeff = _ScatteringCoefficients;
 
+                uint rngState = (uint)(uv.x * 1243 + uv.y * 96456);
 
                 // within a loop of refractions,
                 for (int i = 0; i < _NumRefractions; i++)
@@ -613,16 +706,23 @@ Shader "Custom/RaymarchBlit"
                     // find the next surface hit
                     float2 hitBox = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, rayPos, rayDir);
 
-                    float dstToBox = hitBox.x;
-                    float dstInsideBox = hitBox.y;
+                    bool searchForNextFluidEntryPoint = !travellingThroughFluid;
 
-                    HitInfo hitInfo = FindNextSurface(rayPos, rayDir, travellingThroughFluid, dstInsideBox);
+                                                        
+                    // Test Cube
+                    CubeInfo cubeInfo = RayCubeInfoBox(rayPos, rayDir, _TestCubeLocalToWorld, _TestCubeWorldToLocal);
+
+                    HitInfo hitInfo = FindNextSurface(rayPos, rayDir, searchForNextFluidEntryPoint, cubeInfo.dst, rngState, i == 0 ? 1 : 0);
+
+                    if (!hitInfo.didHit) {
+                        // if no hit, then break out of the loop
+                        break;
+                    }
 
                      // calculate the density along the ray and multiply
                     transmittance *= exp(-hitInfo.densityAlongRay * scatterCoeff); // todo: also multiply by scattering coeff
-                                    
-                    // Test Cube
-                    CubeInfo cubeInfo = RayCubeInfoBox(rayPos, rayDir, _TestCubeLocalToWorld, _TestCubeWorldToLocal);
+
+                    bool useCubeHit = cubeInfo.didHit && cubeInfo.dst < length(cubeInfo.hitPoint - rayPos);
 
                     if (cubeInfo.didHit && cubeInfo.dst < length(hitInfo.hitPoint - rayPos))
                     {
@@ -635,57 +735,83 @@ Shader "Custom/RaymarchBlit"
                         break;
                     }
 
-
-
-                    if (!hitInfo.didHit) {
-                        // if no hit, then break out of the loop
+                    // If light hits the floor it will be scattered in all directions (in hemisphere)
+                    // Not sure how to handle this in real-time, so just break out of loop here
+                    if (hitInfo.hitPoint.y < _BoxBoundsMin.y + 0.05f)
+                    {
                         break;
                     }
 
 
-                    float iorA = travellingThroughFluid ? _IndexOfRefraction : 1.0f; // if inside fluid, use fluid IOR, otherwise use air IOR
-                    float iorB = 1.0 + _IndexOfRefraction - iorA; // if inside fluid, use air IOR, otherwise use fluid IOR
 
-                    // calculate reflection and refraction directions
-                    LightResponse lightResponse = CalculateRefractionAndReflection(rayDir, hitInfo.normal, iorA, iorB);
+                    float iorA = travellingThroughFluid ? _IndexOfRefraction : 1.0f;
+                    float iorB = travellingThroughFluid ? 1.0f : _IndexOfRefraction;
 
-                    float densityRefract = CalculateDensityAlongRay(hitInfo.hitPoint, lightResponse.refractDir, densityStepSize);
-                    float densityReflect = CalculateDensityAlongRay(hitInfo.hitPoint, lightResponse.reflectDir, densityStepSize);
+                    // // calculate reflection and refraction directions
+                    // LightResponse lightResponse = CalculateReflectionAndRefraction(rayDir, hitInfo.normal, iorA, iorB);
 
-                    bool isRefracting = (densityRefract * lightResponse.refractStrength) > (densityReflect * lightResponse.reflectStrength); 
+                    // float densityRefract = CalculateDensityAlongRay(hitInfo.hitPoint, lightResponse.refractDir, densityStepSize);
+                    // float densityReflect = CalculateDensityAlongRay(hitInfo.hitPoint, lightResponse.reflectDir, densityStepSize);
+                    // Calculate reflection and refraction, and choose which path to follow
+                    float3 normal = hitInfo.normal;
+                    LightResponse lightResponse = CalculateReflectionAndRefraction(rayDir, normal, iorA, iorB);
+                    float densityAlongRefractRay = CalculateDensityAlongRay(hitInfo.hitPoint, lightResponse.refractDir, densityStepSize);
+                    float densityAlongReflectRay = CalculateDensityAlongRay(hitInfo.hitPoint, lightResponse.reflectDir, densityStepSize);
+                    bool traceRefractedRay = densityAlongRefractRay * lightResponse.refractStrength > densityAlongReflectRay * lightResponse.reflectStrength;
+                    travellingThroughFluid = traceRefractedRay != travellingThroughFluid;
 
-                    // cheeky way to optimize if statement (if refracting, primaryDir = refractDir)
-                    float3 primaryDir = lerp(lightResponse.reflectDir, lightResponse.refractDir, isRefracting);
-                    float3 secondaryDir = lerp(lightResponse.refractDir, lightResponse.reflectDir, isRefracting);
+                    // Approximate less interesting path
+                    if (traceRefractedRay) lightColor += LightEnvironment(hitInfo.hitPoint, lightResponse.reflectDir) * transmittance * Transmittance(densityAlongReflectRay) * lightResponse.reflectStrength;
+                    else lightColor += LightEnvironment(hitInfo.hitPoint, lightResponse.refractDir) * transmittance * Transmittance(densityAlongRefractRay) * lightResponse.refractStrength;
 
-                    float secondaryStrength = lerp(lightResponse.refractStrength, lightResponse.reflectStrength, isRefracting);
-                    float secondaryDensity  = lerp(densityRefract, densityReflect, !isRefracting);
-
-                    float3 secondaryFactor = secondaryStrength * exp(-secondaryDensity * scatterCoeff);
-                    
-                    // approximate less interesting path?
-                    lightColor += LightEnvironment(hitInfo.hitPoint, secondaryDir) * transmittance * secondaryFactor;
-
+                    // Set up ray for more interesting path
                     rayPos = hitInfo.hitPoint;
-                    rayDir = primaryDir;
-
-                    transmittance *= (isRefracting ? lightResponse.refractStrength : lightResponse.reflectStrength); // multiply transmittance by the strength of the refraction or reflection
-                    
-                    // if refracting and travellingThroughFluid, then we are no longer travellingThroughFluid
-                    // if refracting and not travellingThroughFluid, then we are now travellingThroughFluid
-                    // if reflecting and travellingThroughFluid, then we are now travellingThroughFluid
-                    // if reflecting and not travellingThroughFluid, then we are still not travellingThroughFluid
-                    travellingThroughFluid = isRefracting != travellingThroughFluid;
+                    rayDir = traceRefractedRay ? lightResponse.refractDir : lightResponse.reflectDir;
+                    transmittance *= (traceRefractedRay ? lightResponse.refractStrength : lightResponse.reflectStrength);
                 }
-
-                // Add light from the environment based on the final ray direction
+                                // Approximate remaining path
                 float densityRemainder = CalculateDensityAlongRay(rayPos, rayDir, _LightStepSize);
-                transmittance = max(transmittance, 0.1);
+                lightColor += LightEnvironment(rayPos, rayDir) * transmittance * Transmittance(densityRemainder);
 
-                lightColor += LightEnvironment(rayPos, rayDir) * transmittance * exp(-densityRemainder * scatterCoeff); 
-
-                return lightColor; // Return the final light color
+                return lightColor;
             }
+            //         bool isRefracting = (densityRefract * lightResponse.refractStrength) > (densityReflect * lightResponse.reflectStrength); 
+
+
+            //         // cheeky way to optimize if statement (if refracting, primaryDir = refractDir)
+            //         float3 primaryDir = lerp(lightResponse.reflectDir, lightResponse.refractDir, isRefracting);
+            //         float3 secondaryDir = lerp(lightResponse.refractDir, lightResponse.reflectDir, isRefracting);
+
+            //         float secondaryStrength = lerp(lightResponse.refractStrength, lightResponse.reflectStrength, isRefracting);
+            //         float secondaryDensity  = lerp(densityRefract, densityReflect, !isRefracting);
+
+            //         float3 secondaryFactor = secondaryStrength * exp(-secondaryDensity * scatterCoeff);
+                    
+            //         // approximate less interesting path?
+            //         lightColor += LightEnvironment(hitInfo.hitPoint, secondaryDir) * transmittance * secondaryFactor;
+
+            //         rayPos = hitInfo.hitPoint;
+            //         rayDir = primaryDir;
+
+            //         transmittance *= (isRefracting ? lightResponse.refractStrength : lightResponse.reflectStrength); // multiply transmittance by the strength of the refraction or reflection
+                    
+            //         // if refracting and travellingThroughFluid, then we are no longer travellingThroughFluid
+            //         // if refracting and not travellingThroughFluid, then we are now travellingThroughFluid
+            //         // if reflecting and travellingThroughFluid, then we are now travellingThroughFluid
+            //         // if reflecting and not travellingThroughFluid, then we are still not travellingThroughFluid
+            //         travellingThroughFluid = isRefracting != travellingThroughFluid;
+
+            //         // if at edge, do not reflect back in?
+            //     }
+
+            //     // Add light from the environment based on the final ray direction
+            //     float densityRemainder = CalculateDensityAlongRay(rayPos, rayDir, _LightStepSize);
+            //     transmittance = max(transmittance, 0.1);
+
+            //     lightColor += LightEnvironment(rayPos, rayDir) * transmittance * exp(-densityRemainder * scatterCoeff); 
+
+            //     return lightColor; // Return the final light color
+            // }
 
 
             // rendering to screen
@@ -709,7 +835,7 @@ Shader "Custom/RaymarchBlit"
                 float depthTexture = LinearEyeDepth(nonLinearDepthTexture, _ZBufferParams) * length(ray.direction);
 
                 //float3 raymarch = Raymarch(input.uv, ray, _StepSize);
-                float3 raymarch = Raymarch(ray);
+                float3 raymarch = Raymarch(ray, input.uv);
                 return float4(raymarch, 1); // if raymarch returns -1, return the world color
 
                 // If ray misses box, return the color from the camera opaque texture
