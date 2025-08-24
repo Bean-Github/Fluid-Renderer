@@ -252,77 +252,23 @@ Shader "Custom/RaymarchBlit"
             bool IsInsideFluid(float3 pos)
             {
                 float2 boundsDstInfo = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, pos, float3(0, 0, 1));
-                return (boundsDstInfo.x <= 0 && boundsDstInfo.y > 0) && SampleDensity(pos) > 0;
+                bool withinBox = (boundsDstInfo.x <= 0 && boundsDstInfo.y > 0);
+
+                return withinBox && SampleDensity(pos) > 0;
             }
-            
-            // // Calculate the proportion of light that is reflected at the boundary between two media (via the fresnel equations)
-            // // Note: the amount of light refracted can be calculated as 1 minus this value
-            // float CalculateReflectance(float3 inDir, float3 normal, float iorA, float iorB)
-            // {
-            //     float refractRatio = iorA / iorB;
-            //     float cosAngleIn = -dot(inDir, normal);
-            //     float sinSqrAngleOfRefraction = refractRatio * refractRatio * (1 - cosAngleIn * cosAngleIn);
-            //     if (sinSqrAngleOfRefraction >= 1) return 1; // Ray is fully reflected, no refraction occurs
 
-            //     float cosAngleOfRefraction = sqrt(1 - sinSqrAngleOfRefraction);
-            //     // Perpendicular polarization
-            //     float rPerpendicular = (iorA * cosAngleIn - iorB * cosAngleOfRefraction) / (iorA * cosAngleIn + iorB * cosAngleOfRefraction);
-            //     rPerpendicular *= rPerpendicular;
-            //     // Parallel polarization
-            //     float rParallel = (iorB * cosAngleIn - iorA * cosAngleOfRefraction) / (iorB * cosAngleIn + iorA * cosAngleOfRefraction);
-            //     rParallel *= rParallel;
-
-            //     // Return the average of the perpendicular and parallel polarizations
-            //     return (rPerpendicular + rParallel) / 2;
-            // }
-
-            // float3 Refract(float3 inDir, float3 normal, float iorA, float iorB)
-            // {
-            //     float refractRatio = iorA / iorB;
-            //     float cosAngleIn = -dot(inDir, normal);
-            //     float sinSqr = refractRatio * refractRatio * (1.0 - cosAngleIn * cosAngleIn);
-            //     if (sinSqr > 1.0) 
-            //         return reflect(inDir, normal); // total internal reflection (handle as reflect)
-            //     return refractRatio * inDir + (refractRatio * cosAngleIn - sqrt(1 - sinSqr)) * normal;
-            // }
-
-            // LightResponse CalculateRefractionAndReflection(float3 inVec, float3 normal, float iorA, float iorB)
-            // {
-            //     LightResponse response;
-
-            //     // Calculate theta1
-            //     const float theta1 = acos(dot(-inVec, normal)); // angle of incidence, assume inVec and normal are normalized
-
-            //     // Calculate theta2 using Snell's Law
-            //     const float theta2 = asin((iorA / iorB) * sin(theta1));
-
-            //     // Calculate refraction direction
-            //     response.refractDir = Refract(inVec, normal, iorA, iorB);
-                
-            //     //normalize((iorA / iorB) * inVec + (iorA / iorB * cos(theta1) - cos(theta2)) * normal);
-
-            //     // Calculate reflection direction
-            //     response.reflectDir = reflect(inVec, normal);
-
-            //     // Calculate reflection and refraction strengths
-            //     // float R0 = pow((iorA - iorB) / (iorA + iorB), 2); // Fresnel reflectance at normal incidence
-            //     // float R = R0 + (1 - R0) * pow(1 - cos(theta1), 5); // Fresnel reflectance for arbitrary angle
-            //     response.reflectStrength = CalculateReflectance(inVec, normal, iorA, iorB); // Reflection strength
-            //     response.refractStrength = 1.0 - response.reflectStrength; // Refraction strength
-
-            //     return response; // Placeholder for now
-            // }
-
-                        // Calculate the proportion of light that is reflected at the boundary between two media (via the fresnel equations)
-            // Note: the amount of light refracted can be calculated as 1 minus this value
+            // Calculate the proportion of light that is reflected at the boundary between two media (via the fresnel equations)
             float CalculateReflectance(float3 inDir, float3 normal, float iorA, float iorB)
             {
                 float refractRatio = iorA / iorB;
                 float cosAngleIn = -dot(inDir, normal);
                 float sinSqrAngleOfRefraction = refractRatio * refractRatio * (1 - cosAngleIn * cosAngleIn);
+
                 if (sinSqrAngleOfRefraction >= 1) return 1; // Ray is fully reflected, no refraction occurs
 
                 float cosAngleOfRefraction = sqrt(1 - sinSqrAngleOfRefraction);
+
+                //// // Fresnel equations for reflectance I don't really understand
                 // Perpendicular polarization
                 float rPerpendicular = (iorA * cosAngleIn - iorB * cosAngleOfRefraction) / (iorA * cosAngleIn + iorB * cosAngleOfRefraction);
                 rPerpendicular *= rPerpendicular;
@@ -334,15 +280,20 @@ Shader "Custom/RaymarchBlit"
                 return (rPerpendicular + rParallel) / 2;
             }
 
-
+            // n1cos(theta1) = n2cos(theta2)
             float3 Refract(float3 inDir, float3 normal, float iorA, float iorB)
             {
                 float refractRatio = iorA / iorB;
-                float cosAngleIn = -dot(inDir, normal);
-                float sinSqrAngleOfRefraction = refractRatio * refractRatio * (1 - cosAngleIn * cosAngleIn);
+                float cosAngleIn = -dot(inDir, normal);  // theta1
+                float sinSqrAngleIn = (1 - cosAngleIn * cosAngleIn);
+                float sinSqrAngleOfRefraction = refractRatio * refractRatio * (sinSqrAngleIn);
+
+                // sin^2(theta2) can possibly be greater than 1, which means total internal reflection
                 if (sinSqrAngleOfRefraction > 1) return 0; // Ray is fully reflected, no refraction occurs
 
-                float3 refractDir = refractRatio * inDir + (refractRatio * cosAngleIn - sqrt(1 - sinSqrAngleOfRefraction)) * normal;
+                float cosAngleOfRefraction = sqrt(1 - sinSqrAngleOfRefraction);
+
+                float3 refractDir = refractRatio * inDir + (refractRatio * cosAngleIn - cosAngleOfRefraction) * normal;
                 return refractDir;
             }
 
@@ -414,45 +365,6 @@ Shader "Custom/RaymarchBlit"
                 return cubeInfo;
             }
 
-
-            // float CalculateDensityAlongRay(float3 origin, float3 direction, float stepSize)
-            // {
-            //     float density = 0.0;
-
-            //     float2 hit = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, origin, direction);
-
-            //     float dstTraveled = 0.0f;
-
-            //     const float nudge = stepSize * 0.5;
-            //     const float3 entryPos = origin + direction * (hit.x);
-            //     const float dstInsideBox = hit.y - (nudge + 0.01f);
-
-            //     if (dstInsideBox == 0.0f) {
-            //         // Ray does not intersect box, return 0 density
-            //         return 0.0f;
-            //     }
-
-            //     float3 rayPos = entryPos;
-
-            //     // while ray is still inside 
-            //     while (dstTraveled < dstInsideBox)
-            //     {
-            //         rayPos = entryPos + direction * dstTraveled;
-            //         dstTraveled += stepSize;
-                    
-            //         float densityAlongStep = SampleDensity(rayPos) * stepSize * _DensityMultiplier;
-
-            //         if (densityAlongStep <= 0.0f)
-            //         {
-            //             continue;
-            //         }
-
-            //         density += densityAlongStep;
-            //     }
-
-            //     return density;
-            // }
-
             
             float CalculateDensityAlongRay(float3 rayPos, float3 rayDir, float stepSize)
             {
@@ -461,19 +373,23 @@ Shader "Custom/RaymarchBlit"
                 if (dot(rayDir, rayDir) < 0.9) return 0;
 
                 float2 boundsDstInfo = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, rayPos, rayDir);
-                float dstToBounds = boundsDstInfo[0];
-                float dstThroughBounds = boundsDstInfo[1];
+                float dstToBounds = boundsDstInfo.x;
+                float dstThroughBounds = boundsDstInfo.y;
+
                 if (dstThroughBounds <= 0) return 0;
 
                 float dstTravelled = 0;
                 float opticalDepth = 0;
                 float nudge = stepSize * 0.5;
-                float3 entryPoint = rayPos + rayDir * (dstToBounds + nudge);
-                dstThroughBounds -= (nudge + 0.01f);
+
+                float3 entryPos = rayPos + rayDir * (dstToBounds + nudge);
+
+                dstThroughBounds -= (nudge + 0.01f); //(tiny nudge)
 
                 while (dstTravelled < dstThroughBounds)
                 {
-                    rayPos = entryPoint + rayDir * dstTravelled;
+                    rayPos = entryPos + rayDir * dstTravelled;
+
                     float density = SampleDensity(rayPos) * _DensityMultiplier * stepSize;
                     if (density > 0)
                     {
@@ -483,7 +399,8 @@ Shader "Custom/RaymarchBlit"
                 }
 
                 return opticalDepth;
-            }  //todo: understand why doesnt go into infinite loops (at 0 refraction)
+            }
+
             // -- // -- //
 
             // Reconstruct ray direction from UV
@@ -602,6 +519,19 @@ Shader "Custom/RaymarchBlit"
                 return lerp(colGround, skyGradient, groundToSkyT) + sun * (groundToSkyT >= 1);
             }
 
+
+            float3 CheckerColor()
+            {
+
+            }
+
+            float3 TestCubeColor(CubeInfo cubeInfo, float3 dirToSun)
+            {
+                // color of test cube
+                float3 cubeNormal = cubeInfo.normal;
+                return saturate(dot(cubeNormal, dirToSun) * 0.5f + 0.5f);
+            }
+
             float3 Environment(float3 rayPos, float3 worldDir)
             {
                 // --- Floor parameters ---
@@ -612,17 +542,30 @@ Shader "Custom/RaymarchBlit"
                 float3 rayDir = normalize(worldDir);
 
                 // --- Ray-plane intersection ---
-                float3 P0 = float3(0, -5, 0); // origin of plane
+                float3 P0 = float3(0, floorHeight, 0); // origin of plane
                 float3 n = float3(0, 1, 0); // normal of plane (directly up)
 
                 // Test Cube
                 CubeInfo cubeInfo = RayCubeInfoBox(rayPos, rayDir, _TestCubeLocalToWorld, _TestCubeWorldToLocal);
 
-                if (cubeInfo.didHit)
+                float3 dirToSun = DirToSun();
+
+                float4 camPos = mul(_CameraToWorld, float4(0, 0, 0, 1));
+
+                // if (camPos.y < floorHeight)
+                // {
+                //     if (cubeInfo.didHit && cubeInfo.hitPoint.y < floorHeight)
+                //     {
+                //         return TestCubeColor();
+                //     }
+                // }
+
+                bool renderCube = (cubeInfo.hitPoint.y > floorHeight && camPos.y > floorHeight) || 
+                    (cubeInfo.hitPoint.y < floorHeight && camPos.y < floorHeight);
+
+                if (cubeInfo.didHit && renderCube)
                 {
-                    // color of test cube
-                    float3 cubeNormal = cubeInfo.normal;
-                    return saturate(dot(cubeNormal, DirToSun()) * 0.5f + 0.5f);
+                    return TestCubeColor(cubeInfo, dirToSun);
                 }
 
                 // CALCULATE INTERSECTION
@@ -631,6 +574,7 @@ Shader "Custom/RaymarchBlit"
                 // dot (rayOrigin + t * rayDir - P0, n) = 0
                 // dot(rayOrigin - P0, n) = -t dot(rayDir, n)
                 // t = dot(P0 - rayOrigin, n) / dot(rayDir, n)
+
                 float t = dot(P0 - rayPos, n) / dot(rayDir, n);
 
                 if (t > 0.0 && abs(rayDir.y) > 0.001f) // hit floor in front of camera
@@ -642,14 +586,22 @@ Shader "Custom/RaymarchBlit"
                     float checker = abs(fmod(floor(checkerUV.x) + floor(checkerUV.y), 2.0));  // remainder after dividing by 2, alternates 0, 1, diagonally
                     float3 color = lerp(floorColor, floorColor * 1.2, checker);
 
-                    float shadowDensity = CalculateDensityAlongRay(hitPos, DirToSun(), _LightStepSize * 2) * 2;
-
+                    float shadowDensity = CalculateDensityAlongRay(hitPos, dirToSun, _LightStepSize * 2) * 2;
                     float3 shadowMap = exp(-shadowDensity * _ScatteringCoefficients);
 
-                    bool inShadow = rayBoxDst(_BoxBoundsMin, _BoxBoundsMax, hitPos, DirToSun()).y > 0;
-                    
                     // TODO: test cube shadow
+                    CubeInfo cubeShadowInfo = RayCubeInfoBox(hitPos, dirToSun, _TestCubeLocalToWorld, _TestCubeWorldToLocal);
 
+                    if (cubeShadowInfo.didHit)
+                    {
+                        shadowMap *= 0.25f;
+                    }
+
+                    if (camPos.y < floorHeight && dirToSun.y > 0.0f)
+                    {
+                        shadowMap = 1.0f;
+                    }
+                    
                     return color * shadowMap;
                 }
 
@@ -671,7 +623,7 @@ Shader "Custom/RaymarchBlit"
             // initialize a light color that you will grab
             // 1. hit a surface, if no hit then break;
             // 2. calculate the density along the ray and multiply that onto the transmittance
-            //  2. calculate normal, determine if inside fluid, find indices of refraction, calculate reflection and refraction
+            //     calculate normal, determine if inside fluid, find indices of refraction, calculate reflection and refraction
             //     directions. Also calculate the reflect and refraction strengths
             // 3. set ray to follow what you calculated 
             // 4. multiply transmittance by either refract or reflection strength
@@ -742,8 +694,6 @@ Shader "Custom/RaymarchBlit"
                         break;
                     }
 
-
-
                     float iorA = travellingThroughFluid ? _IndexOfRefraction : 1.0f;
                     float iorB = travellingThroughFluid ? 1.0f : _IndexOfRefraction;
 
@@ -769,12 +719,14 @@ Shader "Custom/RaymarchBlit"
                     rayDir = traceRefractedRay ? lightResponse.refractDir : lightResponse.reflectDir;
                     transmittance *= (traceRefractedRay ? lightResponse.refractStrength : lightResponse.reflectStrength);
                 }
-                                // Approximate remaining path
+
+                // Approximate remaining path
                 float densityRemainder = CalculateDensityAlongRay(rayPos, rayDir, _LightStepSize);
                 lightColor += LightEnvironment(rayPos, rayDir) * transmittance * Transmittance(densityRemainder);
 
                 return lightColor;
             }
+
             //         bool isRefracting = (densityRefract * lightResponse.refractStrength) > (densityReflect * lightResponse.reflectStrength); 
 
 
@@ -834,12 +786,17 @@ Shader "Custom/RaymarchBlit"
                 // get world linear value from depth texture
                 float depthTexture = LinearEyeDepth(nonLinearDepthTexture, _ZBufferParams) * length(ray.direction);
 
-                //float3 raymarch = Raymarch(input.uv, ray, _StepSize);
+                float4 camPos = mul(_CameraToWorld, float4(0, 0, 0, 1));
+
+                if (camPos.y < -5.0f)  // TODO: replace with _FloorHeight constant
+                {
+                    return worldColor;
+                }
+
                 float3 raymarch = Raymarch(ray, input.uv);
                 return float4(raymarch, 1); // if raymarch returns -1, return the world color
 
                 // If ray misses box, return the color from the camera opaque texture
-                return worldColor;
             }
 
             ENDHLSL
