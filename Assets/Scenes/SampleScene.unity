@@ -231,6 +231,7 @@ GameObject:
   m_Component:
   - component: {fileID: 117532362}
   - component: {fileID: 117532361}
+  - component: {fileID: 117532363}
   m_Layer: 0
   m_Name: Fluid Renderer 3D (1)
   m_TagString: Untagged
@@ -253,14 +254,12 @@ MonoBehaviour:
   computeShader: {fileID: 7200000, guid: 29c0adfaa53a7104c8eeb4db19c6ea3a, type: 3}
   blitMaterial: {fileID: 2100000, guid: 140f0a90fb2002846be3de4dd7bdecd9, type: 2}
   renderTexture: {fileID: 8400000, guid: 08370fc573dc2584aa7d68abb2aedf47, type: 2}
-  particlePrefab: {fileID: 1362423825119241816, guid: 3bf7e77088e4b9a438a013e9f9938d56, type: 3}
   boundsCollider: {fileID: 1152484904}
   spawnCollider: {fileID: 1045007800}
-  particleManager: {fileID: 1952001592}
+  spatialHash: {fileID: 117532363}
   particleCount: 20000
   gravity: 1
   mass: 0.75
-  particleRadius: 0.08
   boundsDamping: 0.063
   smoothingRadius: 0.4
   targetDensity: 97.2
@@ -272,6 +271,14 @@ MonoBehaviour:
   slowdownAmount: 0
   mouseForce: 6.14
   mouseRadius: 0.29
+  useDensityMap: 0
+  densityMap: {fileID: 0}
+  densityTextureRes: 0
+  renderParticles: 1
+  particleRadius: 0.08
+  particleManager: {fileID: 1952001592}
+  renderScreenSpace: 0
+  screenSpaceRenderer: {fileID: 0}
 --- !u!4 &117532362
 Transform:
   m_ObjectHideFlags: 0
@@ -288,6 +295,19 @@ Transform:
   - {fileID: 1952001593}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &117532363
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 117532359}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78f0b37eec265594291e001961d1c47a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  spatialHashCompute: {fileID: 7200000, guid: 3e69aeeb657a8554d866d6b9563cf005, type: 3}
 --- !u!1 &149631177
 GameObject:
   m_ObjectHideFlags: 0
@@ -520,6 +540,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   moveSpeed: 6
   mouseSensitivity: 75
+  toggled: 1
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -1597,38 +1618,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: da2ef2a8c30afd74485606a6892c77c2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  particleMesh: {fileID: 4711208715938537054, guid: dc165e54c61ae9e4ba6ebead568e8cc0, type: 3}
   particleMaterial: {fileID: 2100000, guid: 73e1c1589cf8e0c4f91d516dee5239d7, type: 2}
-  velocityGradient:
-    serializedVersion: 2
-    key0: {r: 0.19402625, g: 0.2563491, b: 0.86415094, a: 1}
-    key1: {r: 0.20784312, g: 0.5882353, b: 0.48965767, a: 1}
-    key2: {r: 0.21941064, g: 0.90943396, b: 0.19732988, a: 0}
-    key3: {r: 0.8366805, g: 0.8862745, b: 0.20784314, a: 0}
-    key4: {r: 1, g: 0.5542968, b: 0.23137254, a: 0}
-    key5: {r: 1, g: 0, b: 0.112187386, a: 0}
-    key6: {r: 1, g: 0, b: 0.8487301, a: 0}
-    key7: {r: 0, g: 0, b: 0, a: 0}
-    ctime0: 0
-    ctime1: 4241
-    ctime2: 8096
-    ctime3: 26754
-    ctime4: 42945
-    ctime5: 52505
-    ctime6: 65150
-    ctime7: 0
-    atime0: 0
-    atime1: 65535
-    atime2: 0
-    atime3: 0
-    atime4: 0
-    atime5: 0
-    atime6: 0
-    atime7: 0
-    m_Mode: 0
-    m_ColorSpace: -1
-    m_NumColorKeys: 7
-    m_NumAlphaKeys: 2
+  particleMesh: {fileID: 4711208715938537054, guid: dc165e54c61ae9e4ba6ebead568e8cc0, type: 3}
+  radius: 0.05
+  maxVelocity: 5
 --- !u!4 &1952001593
 Transform:
   m_ObjectHideFlags: 0
@@ -1816,38 +1809,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: da2ef2a8c30afd74485606a6892c77c2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  particleMesh: {fileID: 4711208715938537054, guid: dc165e54c61ae9e4ba6ebead568e8cc0, type: 3}
   particleMaterial: {fileID: 2100000, guid: 73e1c1589cf8e0c4f91d516dee5239d7, type: 2}
-  velocityGradient:
-    serializedVersion: 2
-    key0: {r: 0.19402625, g: 0.2563491, b: 0.86415094, a: 1}
-    key1: {r: 0.20784312, g: 0.5882353, b: 0.48965767, a: 1}
-    key2: {r: 0.21941064, g: 0.90943396, b: 0.19732988, a: 0}
-    key3: {r: 0.8366805, g: 0.8862745, b: 0.20784314, a: 0}
-    key4: {r: 1, g: 0.5542968, b: 0.23137254, a: 0}
-    key5: {r: 1, g: 0, b: 0.112187386, a: 0}
-    key6: {r: 1, g: 0, b: 0.8487301, a: 0}
-    key7: {r: 0, g: 0, b: 0, a: 0}
-    ctime0: 0
-    ctime1: 4241
-    ctime2: 8096
-    ctime3: 26754
-    ctime4: 42945
-    ctime5: 52505
-    ctime6: 65150
-    ctime7: 0
-    atime0: 0
-    atime1: 65535
-    atime2: 0
-    atime3: 0
-    atime4: 0
-    atime5: 0
-    atime6: 0
-    atime7: 0
-    m_Mode: 0
-    m_ColorSpace: -1
-    m_NumColorKeys: 7
-    m_NumAlphaKeys: 2
+  particleMesh: {fileID: 4711208715938537054, guid: dc165e54c61ae9e4ba6ebead568e8cc0, type: 3}
+  radius: 0.05
+  maxVelocity: 5
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

@@ -406,9 +406,6 @@ void MoveParticles(uint3 id : SV_DispatchThreadID)
     
     particles[index].velocity += interactionForce * deltaTime;
     
-    // basic bounds collision
-    HandleCollisions(index);
-    
 
     // --> CALCULATE DENSITY
 
@@ -459,6 +456,9 @@ void MoveParticles(uint3 id : SV_DispatchThreadID)
     // move particle
     particles[index].position += particles[index].velocity * deltaTime;
     
+    // basic bounds collision
+    HandleCollisions(index);
+
     // predict next position
     particles[index].predictedPosition = particles[index].position + particles[index].velocity * deltaTime;
 

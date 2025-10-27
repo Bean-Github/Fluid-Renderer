@@ -755,6 +755,93 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &962671541
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 962671544}
+  - component: {fileID: 962671543}
+  - component: {fileID: 962671542}
+  m_Layer: 0
+  m_Name: Fluid Renderer 3D Combined (1)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &962671542
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 962671541}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78f0b37eec265594291e001961d1c47a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  spatialHashCompute: {fileID: 7200000, guid: 3e69aeeb657a8554d866d6b9563cf005, type: 3}
+--- !u!114 &962671543
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 962671541}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 67b666237e48a2c41a5858908f12eb5a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  computeShader: {fileID: 7200000, guid: 29c0adfaa53a7104c8eeb4db19c6ea3a, type: 3}
+  blitMaterial: {fileID: 2100000, guid: 140f0a90fb2002846be3de4dd7bdecd9, type: 2}
+  renderTexture: {fileID: 8400000, guid: 08370fc573dc2584aa7d68abb2aedf47, type: 2}
+  boundsCollider: {fileID: 1951327738}
+  spawnCollider: {fileID: 1738715486}
+  spatialHash: {fileID: 1959463156}
+  particleCount: 16384
+  gravity: 1
+  mass: 0.75
+  boundsDamping: 0.076
+  smoothingRadius: 0.39
+  targetDensity: 153.1
+  pressureMultiplier: 90.9
+  nearPressureMultiplier: 1.41
+  cornerPushback: 0.23
+  maxVelocity: 6.47
+  viscosity: 0.003
+  slowdownAmount: 0
+  mouseForce: 6.14
+  mouseRadius: 0.29
+  useDensityMap: 1
+  densityMap: {fileID: 0}
+  densityTextureRes: 100
+  renderParticles: 0
+  particleRadius: 0.08
+  particleManager: {fileID: 73674066}
+  renderScreenSpace: 0
+  screenSpaceRenderer: {fileID: 73674068}
+--- !u!4 &962671544
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 962671541}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1806710376}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1254696669
 GameObject:
   m_ObjectHideFlags: 0
@@ -1363,6 +1450,72 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1806710375
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1806710376}
+  - component: {fileID: 1806710378}
+  - component: {fileID: 1806710377}
+  m_Layer: 0
+  m_Name: Particles
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1806710376
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1806710375}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 962671544}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1806710377
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1806710375}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f7e27d5ee84f6174eab66b11192ede74, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  particleMaterial: {fileID: 2100000, guid: 58878b39cace5b2409e2028013acae10, type: 2}
+  particleMesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
+  maxVelocity: 5
+  depthRT: {fileID: 0}
+  depthShader: {fileID: 0}
+--- !u!114 &1806710378
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1806710375}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: da2ef2a8c30afd74485606a6892c77c2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  particleMaterial: {fileID: 2100000, guid: ce10720ff9fd6d34786d2370334b074d, type: 2}
+  particleMesh: {fileID: 4711208715938537054, guid: dc165e54c61ae9e4ba6ebead568e8cc0, type: 3}
+  radius: 0.16
+  maxVelocity: 5
 --- !u!1 &1855514761
 GameObject:
   m_ObjectHideFlags: 0
@@ -1659,8 +1812,8 @@ MonoBehaviour:
   gravity: 1
   mass: 0.75
   boundsDamping: 0.076
-  smoothingRadius: 0.3
-  targetDensity: 97.2
+  smoothingRadius: 0.35
+  targetDensity: 99.2
   pressureMultiplier: 111
   nearPressureMultiplier: 1.41
   cornerPushback: 0.23
@@ -1793,6 +1946,7 @@ SceneRoots:
   - {fileID: 77622562}
   - {fileID: 1855514762}
   - {fileID: 1959463155}
+  - {fileID: 962671544}
   - {fileID: 1951327741}
   - {fileID: 657761023}
   - {fileID: 1351245837}
