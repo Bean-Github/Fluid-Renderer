@@ -6,7 +6,6 @@ internal class RaymarchBlitRendererFeature : ScriptableRendererFeature
 {
     public Shader m_Shader;
 
-
     Material m_Material;
 
     RaymarchBlitPass m_RenderPass = null;
